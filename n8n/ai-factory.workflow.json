@@ -1,0 +1,769 @@
+{
+  "name": "AI Factory",
+  "nodes": [
+    {
+      "id": "58600816-3f37-5430-bef1-39dbf91166cf",
+      "name": "Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "9e27a825-5811-513d-990d-8661f7dc2d81",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-factory",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "8b86b993-52fd-5bb9-8da1-48e4cf223e93",
+      "name": "Create Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      }
+    },
+    {
+      "id": "8de3b5b0-da40-57d5-a93c-909324176ae0",
+      "name": "Spec Writer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/spec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "18bc4117-65c0-58a3-ba83-274ba76a4283",
+      "name": "Builder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/build",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 2700000
+        }
+      }
+    },
+    {
+      "id": "ee965d09-e379-51f8-86a2-ee4e98dde323",
+      "name": "Review Security",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        20
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/review/security",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "f087c4c7-bdc3-5277-9dff-7b86a02572e7",
+      "name": "Review UX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/review/ux",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "4129711c-a4fb-5bf8-8b23-cffa7eef654f",
+      "name": "Review UI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/review/ui",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "cb2e0694-ce3f-5585-a8b1-d79a68df3e8b",
+      "name": "Review Code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        440
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/review/code",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "792cd8ea-5c55-5e4a-878a-30cd696b1a8c",
+      "name": "Review Load",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        580
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/review/load",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "5f502dc2-82a5-5f9b-bf92-1f131ca2ea99",
+      "name": "Wait Reviews",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1140,
+        300
+      ],
+      "parameters": {
+        "numberInputs": 5
+      }
+    },
+    {
+      "id": "f99fac84-2fea-5768-a9da-90e8146cb02e",
+      "name": "Approver",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/approve",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "da8f4417-a778-5799-9f32-6e02e1602964",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1580,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b4cdb6f7-9ac9-51f9-88ca-d3c06a05f9d7",
+              "leftValue": "={{ $json.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "111b841a-3a97-5070-9c40-61f5e3123dba",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9c3bc1e8-4c4b-541d-ab51-90b728a932dc",
+              "leftValue": "={{ $json.can_retry }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "9e378d6f-b89f-5795-96f2-377672ee98a1",
+      "name": "Mark Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        580
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/fail",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({reason: \"max_iterations\"}) }}"
+      }
+    },
+    {
+      "id": "83185879-71fc-58f4-8835-c27de712795e",
+      "name": "Deploy Gate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/gate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "5adc6739-bce8-58af-acda-1564128e84fb",
+      "name": "Deploy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/deploy",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      }
+    },
+    {
+      "id": "11a51214-bdb8-555f-8e6a-70a3be9da55c",
+      "name": "Librarian",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/learn",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "5a678cdc-1810-5512-bea3-8088be6afee4",
+      "name": "Needs Human?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2460,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a85e3263-2c5d-517d-8654-6ad6b596fdfc",
+              "leftValue": "={{ $('Deploy').isExecuted && $('Deploy').first().json.status === 'awaiting_human' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4aec42c3-95d4-5f0a-ac9d-a3a72bd6212c",
+      "name": "Notify human (Telegram/Teams)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2680,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b603ee1f-0b5c-5618-bcbc-2d1ef0e759f0",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2680,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "753251cb-c85a-5cda-96ac-15503da17a51",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -160
+      ],
+      "parameters": {
+        "width": 640,
+        "height": 220,
+        "content": "## AI Factory\nPOST /webhook/ai-factory `{title, description, source, source_ref, ui_url}`\n\nSpec → Builder (TDD) → 5 revisores en paralelo (4 LLM + Locust) → Aprobador.\nRechazo + iteraciones disponibles ⇒ vuelve al Builder con el feedback.\nAprobado ⇒ Deploy Gate (reglas de path + agente) ⇒ merge local o PR.md para humano.\n\nReemplazá **Notify human** por un nodo Telegram o Microsoft Teams."
+      }
+    }
+  ],
+  "connections": {
+    "Intake": {
+      "main": [
+        [
+          {
+            "node": "Create Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Run": {
+      "main": [
+        [
+          {
+            "node": "Spec Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spec Writer": {
+      "main": [
+        [
+          {
+            "node": "Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Builder": {
+      "main": [
+        [
+          {
+            "node": "Review Security",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review UX",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review UI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review Code",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review Load",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Security": {
+      "main": [
+        [
+          {
+            "node": "Wait Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review UX": {
+      "main": [
+        [
+          {
+            "node": "Wait Reviews",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Review UI": {
+      "main": [
+        [
+          {
+            "node": "Wait Reviews",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Review Code": {
+      "main": [
+        [
+          {
+            "node": "Wait Reviews",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Review Load": {
+      "main": [
+        [
+          {
+            "node": "Wait Reviews",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Wait Reviews": {
+      "main": [
+        [
+          {
+            "node": "Approver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approver": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Deploy Gate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Builder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Failed": {
+      "main": [
+        [
+          {
+            "node": "Librarian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy Gate": {
+      "main": [
+        [
+          {
+            "node": "Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy": {
+      "main": [
+        [
+          {
+            "node": "Librarian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Librarian": {
+      "main": [
+        [
+          {
+            "node": "Needs Human?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Human?": {
+      "main": [
+        [
+          {
+            "node": "Notify human (Telegram/Teams)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

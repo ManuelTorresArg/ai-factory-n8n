@@ -1,0 +1,5 @@
+.env
+data/runs/
+data/worktrees/
+__pycache__/
+.pytest_cache/

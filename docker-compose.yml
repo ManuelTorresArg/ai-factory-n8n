@@ -1,0 +1,96 @@
+# AI Factory local: n8n (orquestador) + factory-runner (ejecutor de agentes).
+# OmniRoute queda en el host, como hoy (127.0.0.1:20128). omniroute-bridge lo expone SOLO en la IP de
+# docker0 (172.17.0.1:20129), sin tocar OmniRoute ni abrirlo a la LAN: un dst-nat limitado a la interfaz de Docker.
+#
+#   docker compose up -d --build
+#   n8n:     http://localhost:5678
+#   runner:  http://localhost:8000/docs
+
+name: ai-factory
+
+services:
+  omniroute-bridge:
+    image: alpine/socat:latest
+    restart: unless-stopped
+    network_mode: host                       # necesita ver el 127.0.0.1 del host
+    command: >-
+      TCP-LISTEN:${OMNIROUTE_BRIDGE_PORT:-20129},bind=${DOCKER_HOST_IP:-172.17.0.1},fork,reuseaddr
+      TCP:127.0.0.1:${OMNIROUTE_PORT:-20128}
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=America/Argentina/Mendoza
+      - TZ=America/Argentina/Mendoza
+      - N8N_SECURE_COOKIE=false              # sólo localhost
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false   # el workflow lee FACTORY_RUNNER_URL / FACTORY_TOKEN con $env
+      - N8N_RUNNERS_ENABLED=true
+      - FACTORY_RUNNER_URL=http://factory-runner:8000
+      - FACTORY_TOKEN=${FACTORY_TOKEN:?definí FACTORY_TOKEN en .env}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+    depends_on:
+      factory-runner:
+        condition: service_healthy
+    healthcheck:                             # healthy = migraciones terminadas; recién ahí import/publish
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [factory]
+
+  factory-runner:
+    build:
+      context: ./runner
+      args:
+        WITH_NODE: ${WITH_NODE:-false}
+        WITH_PLAYWRIGHT: ${WITH_PLAYWRIGHT:-false}
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"        # los archivos que escribe en tu repo quedan a tu nombre
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - OMNIROUTE_BASE_URL=${OMNIROUTE_BASE_URL:-http://host.docker.internal:20129/v1}   # vía omniroute-bridge
+      - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY:-sk-local}
+      - COMBO_ARCHITECT=${COMBO_ARCHITECT:-hermes-coder-high}
+      - COMBO_BUILDER=${COMBO_BUILDER:-hermes-coder-mid}
+      - COMBO_REVIEWER=${COMBO_REVIEWER:-hermes-qa}
+      - COMBO_VISION=${COMBO_VISION:-auto/best-vision}
+      - FACTORY_TOKEN=${FACTORY_TOKEN}
+      - FACTORY_MOCK=${FACTORY_MOCK:-0}
+      - FACTORY_CONFIG=/config/factory.yaml
+      - WORKSPACE=/workspace
+      - DATA_DIR=/data
+      - BRAIN_DIR=/brain
+      - PROMPTS_DIR=/prompts
+      - GIT_AUTHOR_NAME=AI Factory
+      - GIT_AUTHOR_EMAIL=ai-factory@localhost
+      - GIT_COMMITTER_NAME=AI Factory
+      - GIT_COMMITTER_EMAIL=ai-factory@localhost
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # = IP de docker0 (172.17.0.1), donde escucha omniroute-bridge
+    volumes:
+      - ${TARGET_REPO:?definí TARGET_REPO en .env}:/workspace   # el repo sobre el que trabaja la fábrica
+      - ./data:/data                                            # runs/ (auditoría) + worktrees/
+      - ./brain:/brain                                          # memoria persistente
+      - ./prompts:/prompts:ro
+      - ./factory.yaml:/config/factory.yaml:ro
+    depends_on:
+      - omniroute-bridge
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [factory]
+
+volumes:
+  n8n_data:
+
+networks:
+  factory:

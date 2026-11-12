@@ -1,0 +1,76 @@
+# AI Factory — configuración central (equivalente a las `variables:` + `include:` de un .gitlab-ci.yml)
+# Las ${VAR} se expanden desde el entorno (.env → docker compose → runner).
+
+omniroute:
+  base_url: ${OMNIROUTE_BASE_URL:-http://host.docker.internal:20129/v1}
+  api_key: ${OMNIROUTE_API_KEY:-sk-local}
+  timeout_s: 600
+  retries: 2
+
+# Rol → combo de OmniRoute (verificados en /v1/models: hermes-coder-high|mid|low, hermes-qa, auto/best-vision).
+# Cuando crees combos dedicados (factory-architect, factory-reviewer, ...) cambialos en .env.
+#   Video          → acá
+#   Opus           → combo "pesado" (spec, aprobador, gate)
+#   Sonnet / Sol   → combo de revisión
+roles:
+  spec_writer:       { model: "${COMBO_ARCHITECT:-hermes-coder-high}", temperature: 0.2 }
+  builder:           { model: "${COMBO_BUILDER:-hermes-coder-mid}",   temperature: 0.1, max_steps: 40 }
+  reviewer_security: { model: "${COMBO_REVIEWER:-hermes-qa}",     temperature: 0.0 }
+  reviewer_ux:       { model: "${COMBO_REVIEWER:-hermes-qa}",     temperature: 0.2 }
+  reviewer_ui:       { model: "${COMBO_VISION:-auto/best-vision}",       temperature: 0.2 }   # necesita visión si usás ui_url
+  reviewer_code:     { model: "${COMBO_REVIEWER:-hermes-qa}",     temperature: 0.0 }
+  approver:          { model: "${COMBO_ARCHITECT:-hermes-coder-high}", temperature: 0.0 }
+  deploy_gate:       { model: "${COMBO_ARCHITECT:-hermes-coder-high}", temperature: 0.0 }
+  librarian:         { model: "${COMBO_REVIEWER:-hermes-qa}",     temperature: 0.2 }
+
+pipeline:
+  base_branch: main
+  branch_prefix: factory/
+  max_iterations: 3          # vueltas Builder ⇄ Aprobador antes de marcar el run como failed
+
+project:
+  # Se ejecuta DENTRO del worktree del run. `python -m pytest` agrega la raíz al sys.path.
+  test_command: "python -m pytest -q"
+  # Prefijos permitidos para run_command del Builder (sin shell, sin pipes).
+  allowed_commands:
+    - "python -m pytest"
+    - "pytest"
+    - "ruff check"
+    - "npm test"
+    - "npm run lint"
+
+loadtest:
+  # 5º revisor (Locust, sin LLM). Si el repo no tiene el locustfile, el revisor pasa como "no aplica".
+  enabled: true
+  locustfile: loadtest/locustfile.py        # relativo a la raíz del repo
+  # Cómo levantar la app DENTRO del worktree. {port} = puerto libre por run (runs en paralelo no chocan).
+  # Vacío = no levanta nada y apunta a target_url (un servicio que ya está corriendo).
+  start_command: ""                         # ej: "python -m uvicorn app.main:app --port {port}"
+  target_url: "http://127.0.0.1:{port}"
+  health_path: /
+  startup_timeout_s: 30
+  users: 20                                 # usuarios concurrentes
+  spawn_rate: 5                             # usuarios nuevos por segundo
+  run_time: 30s
+  timeout_s: 300
+  thresholds:                               # superar cualquiera ⇒ blocker ⇒ el Aprobador rechaza sí o sí
+    p95_ms: 500
+    failure_ratio: 0.01
+    min_rps: 0
+  max_regression_pct: 30                    # p95 vs baseline del último merge (data/loadtest-baseline.json)
+
+deploy:
+  # Regla determinista: si el diff toca cualquiera de estos paths → revisión humana, diga lo que diga el agente.
+  critical_paths:
+    - "**/migrations/**"
+    - "**/*.sql"
+    - "db/**"
+    - "backend/**"
+    - "**/auth/**"
+    - "**/.env*"
+    - "Dockerfile"
+    - "docker-compose*.yml"
+    - ".gitlab-ci.yml"
+    - "k8s/**"
+    - "helm/**"
+  max_auto_lines: 400
