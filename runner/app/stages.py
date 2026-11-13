@@ -122,7 +122,12 @@ class Factory:
             if shot:
                 user = [{"type": "text", "text": text},
                         {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{shot}"}}]
-        verdict = self.llm.ask_json(REVIEWERS[kind], self.prompt(REVIEWERS[kind]), user)
+        verdict = self.llm.ask_json(REVIEWERS[kind], self.prompt(REVIEWERS[kind]), user, check=review_problem)
+        problem = review_problem(verdict)
+        if problem:
+            # Ni con la corrección respetó el formato: no inventamos un pass, pero tampoco un fail silencioso.
+            verdict = {"verdict": "fail", "malformed": True, "findings": [],
+                       "summary": f"El revisor no respondió con el formato esperado ({problem}).", "raw": verdict}
         return self._save_review(run_id, it, kind, verdict)
 
     def _save_review(self, run_id: str, it: str, kind: str, verdict: dict) -> dict:
@@ -272,6 +277,15 @@ class Factory:
                  "## Spec", self.store.read(run["id"], "spec.md"), "",
                  "Aprobar: `POST /runs/<id>/human-decision {\"approve\": true}`"]
         return "\n".join(lines)
+
+
+def review_problem(v: dict) -> str | None:
+    """Valida la forma de prompts/_review_format.md. None = OK."""
+    if v.get("verdict") not in ("pass", "fail"):
+        return f"falta \"verdict\" con valor \"pass\" o \"fail\" (recibí las claves {sorted(v)})"
+    if not isinstance(v.get("findings", []), list):
+        return "\"findings\" tiene que ser una lista"
+    return None
 
 
 def screenshot(url: str | None) -> str | None:

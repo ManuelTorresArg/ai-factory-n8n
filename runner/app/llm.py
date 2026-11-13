@@ -66,16 +66,31 @@ class LLM:
                 time.sleep(2 * (attempt + 1))
         raise LLMError(f"Rol {role} ({rc['model']}): {last}")
 
-    def ask_json(self, role: str, system: str, user: str | list) -> dict:
-        """Pide una respuesta JSON y la parsea de forma tolerante (no todos los combos soportan json_mode)."""
+    def ask_json(self, role: str, system: str, user: str | list, check=None) -> dict:
+        """Pide una respuesta JSON y la parsea de forma tolerante (no todos los combos soportan json_mode).
+
+        `check(dict) -> str | None` valida la forma: si devuelve un error, se le pide al modelo UNA vez
+        que corrija. El llamador vuelve a validar, porque el segundo intento también puede venir mal.
+        """
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         msg = self.chat(role, messages)
         try:
-            return parse_json(msg.get("content") or "")
+            out = parse_json(msg.get("content") or "")
         except ValueError:
             messages += [msg_clean(msg), {"role": "user", "content":
                          "Tu respuesta no fue JSON válido. Devolvé SOLO el objeto JSON pedido."}]
-            return parse_json(self.chat(role, messages).get("content") or "")
+            msg = self.chat(role, messages)
+            out = parse_json(msg.get("content") or "")
+        problem = check(out) if check else None
+        if problem:
+            messages += [msg_clean(msg), {"role": "user", "content":
+                         f"Tu JSON no respeta el formato pedido: {problem}. "
+                         "Devolvé SOLO el objeto JSON con exactamente las claves del formato del final de tus instrucciones."}]
+            try:
+                out = parse_json(self.chat(role, messages).get("content") or "")
+            except ValueError:
+                pass
+        return out
 
     def ask_text(self, role: str, system: str, user: str) -> str:
         msg = self.chat(role, [{"role": "system", "content": system}, {"role": "user", "content": user}])

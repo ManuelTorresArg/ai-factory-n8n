@@ -199,3 +199,20 @@ def test_ui_endpoints(client):
     assert client.get("/prompts/..%2F..%2Fetc%2Fpasswd").status_code in (400, 404)
     assert any(f["name"] == "LESSONS.md" for f in client.get("/brain").json())
     assert client.get("/pipeline", headers={"X-Factory-Token": "mal"}).status_code == 401
+
+
+def test_malformed_review_is_retried(client, monkeypatch):
+    monkeypatch.setenv("FACTORY_MOCK_BAD_REVIEW", "once")
+    rid, a = pipeline(client)  # pipeline() exige verdict == pass en los 4 revisores LLM
+    assert a["approved"]
+
+
+def test_malformed_review_is_flagged(client, monkeypatch):
+    monkeypatch.setenv("FACTORY_MOCK_BAD_REVIEW", "always")
+    rid = client.post("/runs", json={"title": "x", "description": "y"}).json()["run_id"]
+    client.post(f"/runs/{rid}/spec")
+    client.post(f"/runs/{rid}/build")
+    r = client.post(f"/runs/{rid}/review/code").json()
+    assert r["verdict"] == "fail"
+    v = client.get(f"/runs/{rid}").json()["reviews"]["1"]["code"]
+    assert v["malformed"] and "formato" in v["summary"] and v["raw"]["outcome"] == "passed"

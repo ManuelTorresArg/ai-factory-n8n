@@ -2,6 +2,7 @@
 
 FACTORY_MOCK_REJECT_FIRST=1  → el Aprobador rechaza la iteración 1 (prueba el loop)
 FACTORY_MOCK_GATE=human      → el Deploy Gate pide revisión humana
+FACTORY_MOCK_BAD_REVIEW=once|always → los revisores LLM responden fuera de formato (una vez o siempre)
 """
 from __future__ import annotations
 
@@ -40,6 +41,9 @@ def respond(role: str, messages: list[dict], tools=None) -> dict:
         return {"role": "assistant", "content": None, "_usage": {},
                 "tool_calls": [_call("finish", {"summary": "greet() implementado con test primero."}, 5)]}
     if role.startswith("reviewer_"):
+        bad = os.environ.get("FACTORY_MOCK_BAD_REVIEW")  # "once" = corrige al reintentar, "always" = nunca
+        if bad == "always" or (bad == "once" and len(messages) <= 2):
+            return _text(json.dumps({"outcome": "passed", "summary": "todo bien", "deviations": []}))
         return _text(json.dumps({"verdict": "pass", "score": 9, "summary": f"{role}: OK", "findings": [
             {"severity": "minor", "file": "greet.py", "issue": "falta docstring", "suggestion": "agregar docstring"}]}))
     if role == "approver":

@@ -310,9 +310,9 @@ function nodeStates(run, audit) {
   for (const k of REVIEWS) {
     const v = revs[k];
     if (v) {
-      const s = v.skipped ? "skipped" : v.verdict === "pass" ? "done" : "fail";
+      const s = v.skipped ? "skipped" : v.malformed ? "warn" : v.verdict === "pass" ? "done" : "fail";
       const bl = (v.findings || []).filter(f => f.severity === "blocker").length;
-      st[k] = { s, note: v.skipped ? "" : (bl ? `${bl} blocker` : (v.score != null ? `score ${v.score}` : "")) };
+      st[k] = { s, note: v.skipped ? "" : v.malformed ? "formato inválido" : (bl ? `${bl} blocker` : (v.score != null ? `score ${v.score}` : "")) };
     } else if (reviewsRunning) st[k] = { s: "running", note: "" };
   }
 
@@ -450,7 +450,7 @@ function tabBody() {
         <dt>Iteración</dt><dd>${esc(r.iteration)} / ${esc(S.cfg?.pipeline?.max_iterations ?? "?")}</dd>
         <dt>Tests</dt><dd>${r.tests ? badge(r.tests.passed ? "pass" : "fail", r.tests.passed ? "en verde" : "en rojo") : "—"}</dd>
         <dt>TDD</dt><dd>${r.tdd ? badge(r.tdd.tests_touched ? "pass" : "fail", r.tdd.tests_touched ? "toca tests" : "sin tests") : "—"}</dd>
-        <dt>Revisiones</dt><dd>${Object.keys(revs).length ? REVIEWS.map(k => revs[k] ? badge(revs[k].skipped ? "skipped" : revs[k].verdict, REVIEW_LABEL[k]) : "").join(" ") : "—"}</dd>
+        <dt>Revisiones</dt><dd>${Object.keys(revs).length ? REVIEWS.map(k => revs[k] ? badge(revs[k].skipped ? "skipped" : revs[k].malformed ? "warn" : revs[k].verdict, REVIEW_LABEL[k]) : "").join(" ") : "—"}</dd>
         <dt>Aprobador</dt><dd>${r.approval ? badge(r.approval.decision, r.approval.decision === "approve" ? "aprobó" : "rechazó") : "—"}</dd>
         <dt>Gate</dt><dd>${r.gate ? badge(r.gate.mode === "auto" ? "pass" : "warn", r.gate.mode) + ` <span class="muted small">${esc(r.gate.lines_changed)} líneas, ${esc(r.gate.files?.length)} archivos</span>` : "—"}</dd>
         <dt>Deploy</dt><dd>${r.deploy ? badge(r.deploy.status) + (r.deploy.commit ? ` <code>${esc(r.deploy.commit.slice(0, 10))}</code>` : "") : "—"}</dd>
@@ -491,9 +491,10 @@ const list = a => a?.length ? `<ul class="findings">${a.map(x => `<li>${esc(x)}<
 function reviewBlock(k, v) {
   const findings = v.findings || [];
   const m = v.metrics;
-  return `<div class="rev"><div class="rh"><b>${esc(REVIEW_LABEL[k] || k)}</b>${badge(v.skipped ? "skipped" : v.verdict, v.skipped ? "no aplica" : v.verdict)}
+  return `<div class="rev"><div class="rh"><b>${esc(REVIEW_LABEL[k] || k)}</b>${v.malformed ? badge("warn", "formato inválido") : badge(v.skipped ? "skipped" : v.verdict, v.skipped ? "no aplica" : v.verdict)}
     ${v.score != null ? `<span class="muted small">score ${esc(v.score)}</span>` : ""}<span class="small">${esc(v.summary || "")}</span></div>
     ${m ? `<div class="muted small mono" style="margin-top:4px">p95 ${esc(m.p95_ms)} ms · errores ${esc(m.failure_ratio)} · ${esc(m.rps)} req/s · ${esc(m.requests)} req</div>` : ""}
+    ${v.malformed && v.raw ? `<details><summary class="muted small">respuesta original</summary><pre class="box">${esc(JSON.stringify(v.raw, null, 2))}</pre></details>` : ""}
     ${findings.length ? `<ul class="findings">${findings.map(f => `<li><span class="sev ${esc(f.severity)}">${esc(f.severity)}</span>${f.file ? `<code>${esc(f.file)}</code> ` : ""}${esc(f.issue)}${f.suggestion ? ` <span class="muted">— ${esc(f.suggestion)}</span>` : ""}</li>`).join("")}</ul>` : ""}</div>`;
 }
 
