@@ -11,13 +11,23 @@
     POST /runs/{id}/fail               marca el run como fallido
     POST /runs/{id}/learn              Librarian actualiza el Brain
     GET  /runs, /runs/{id}, /runs/{id}/audit, /health
+
+Para la UI (GET /ui):
+    GET  /pipeline                     componentes y configuración (sin secretos)
+    GET  /runs/{id}/files[/{name}]     artefactos del run
+    GET  /brain[/{name}], /prompts/{name}
+    POST /submit                       reenvía la tarea al webhook de n8n
 """
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
+from pathlib import Path
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .config import settings
@@ -133,3 +143,85 @@ def fail(run_id: str, body: Fail | None = None):
 @app.post("/runs/{run_id}/learn", dependencies=[Depends(auth)])
 def learn(run_id: str):
     return _run(factory().learn, run_id)
+
+
+# ---- UI -------------------------------------------------------------------
+UI_DIR = Path(__file__).parent / "ui"
+_SAFE_NAME = re.compile(r"^[\w.-]+$")
+
+
+def _safe_file(root: Path, name: str, suffix: str | None = None) -> Path:
+    """Sólo nombres planos dentro de root: nada de ../ ni subcarpetas."""
+    if not _SAFE_NAME.match(name) or name.startswith(".") or (suffix and not name.endswith(suffix)):
+        raise HTTPException(400, "nombre de archivo inválido")
+    f = root / name
+    if not f.is_file():
+        raise HTTPException(404, "archivo inexistente")
+    return f
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse("/ui")
+
+
+@app.get("/ui", include_in_schema=False)
+def ui():
+    return FileResponse(UI_DIR / "index.html")
+
+
+@app.get("/pipeline", dependencies=[Depends(auth)])
+def pipeline():
+    f = factory()
+    cfg = f.cfg
+    return {
+        "mock": f.s.mock,
+        "omniroute": cfg.get("omniroute", {}).get("base_url"),
+        "n8n": f.s.n8n_public_url,
+        "roles": cfg.get("roles", {}),
+        "pipeline": cfg.get("pipeline", {}),
+        "project": {"test_command": cfg.get("project", {}).get("test_command"),
+                    "allowed_commands": cfg.get("project", {}).get("allowed_commands", [])},
+        "loadtest": cfg.get("loadtest", {}),
+        "deploy": cfg.get("deploy", {}),
+        "prompts": sorted(p.stem for p in f.s.prompts_dir.glob("*.md")),
+    }
+
+
+@app.get("/runs/{run_id}/files", dependencies=[Depends(auth)])
+def run_files(run_id: str):
+    return _run(factory().store.files, run_id)
+
+
+@app.get("/runs/{run_id}/files/{name}", dependencies=[Depends(auth)], response_class=PlainTextResponse)
+def run_file(run_id: str, name: str):
+    root = _run(factory().store.path, run_id)
+    return _safe_file(root, name).read_text(encoding="utf-8", errors="replace")
+
+
+@app.get("/brain", dependencies=[Depends(auth)])
+def brain():
+    root = factory().s.brain_dir
+    return [{"name": p.name, "size": p.stat().st_size} for p in sorted(root.glob("*.md"))]
+
+
+@app.get("/brain/{name}", dependencies=[Depends(auth)], response_class=PlainTextResponse)
+def brain_file(name: str):
+    return _safe_file(factory().s.brain_dir, name, ".md").read_text(encoding="utf-8")
+
+
+@app.get("/prompts/{name}", dependencies=[Depends(auth)], response_class=PlainTextResponse)
+def prompt_file(name: str):
+    return _safe_file(factory().s.prompts_dir, f"{name}.md").read_text(encoding="utf-8")
+
+
+@app.post("/submit", dependencies=[Depends(auth)])
+def submit(task: Task):
+    """Igual que scripts/submit.sh: la tarea entra por n8n, que orquesta todas las etapas."""
+    try:
+        r = httpx.post(settings().n8n_webhook, json=task.model_dump(), timeout=15)
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"n8n no responde en {settings().n8n_webhook}: {exc}")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"n8n respondió {r.status_code}: {r.text[:300]}")
+    return {"ok": True, "n8n": r.text[:300]}

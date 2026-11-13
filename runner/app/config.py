@@ -33,6 +33,9 @@ class Settings:
         self.prompts_dir = Path(os.environ.get("PROMPTS_DIR", here / "prompts"))
         self.token = os.environ.get("FACTORY_TOKEN", "")
         self.mock = os.environ.get("FACTORY_MOCK", "0") == "1"
+        # La UI envía tareas por el mismo webhook que usa submit.sh, así el pipeline lo orquesta n8n.
+        self.n8n_webhook = os.environ.get("N8N_WEBHOOK_URL", "http://n8n:5678/webhook/ai-factory")
+        self.n8n_public_url = os.environ.get("N8N_PUBLIC_URL", "http://localhost:5678")
 
     @property
     def runs_dir(self) -> Path:

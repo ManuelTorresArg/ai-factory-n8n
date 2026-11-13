@@ -183,3 +183,19 @@ def test_regression_vs_baseline():
     assert evaluate(m, th, {"p95_ms": 120}, 30) == []
     f = evaluate(m, th, {"p95_ms": 80, "commit": "abc123"}, 30)
     assert f[0]["severity"] == "blocker" and "Regresión" in f[0]["issue"] and "abc123" in f[0]["suggestion"]
+
+
+def test_ui_endpoints(client):
+    rid, _ = pipeline(client)
+    assert client.get("/ui").status_code == 200
+    p = client.get("/pipeline").json()
+    assert "builder" in p["roles"] and "api_key" not in str(p) and "builder" in p["prompts"]
+    names = [f["name"] for f in client.get(f"/runs/{rid}/files").json()]
+    assert {"run.json", "spec.md", "approval-1.json"} <= set(names)
+    assert "Spec" in client.get(f"/runs/{rid}/files/spec.md").text
+    assert client.get(f"/runs/{rid}/files/..%2Frun.json").status_code in (400, 404)
+    assert client.get(f"/runs/{rid}/files/nope.md").status_code == 404
+    assert client.get("/prompts/builder").status_code == 200
+    assert client.get("/prompts/..%2F..%2Fetc%2Fpasswd").status_code in (400, 404)
+    assert any(f["name"] == "LESSONS.md" for f in client.get("/brain").json())
+    assert client.get("/pipeline", headers={"X-Factory-Token": "mal"}).status_code == 401

@@ -47,7 +47,8 @@ docker compose up -d --build
 
 | Acción | Cómo |
 |---|---|
-| Enviar tarea | `./scripts/submit.sh "título" "descripción" [sentry|github|mantis] [ref]` o `POST /webhook/ai-factory` |
+| **Interfaz web** | http://localhost:8000/ui — diagrama del pipeline con el estado de cada etapa, iteraciones, bitácora, artefactos, Brain y aprobación humana. Pide el `FACTORY_TOKEN` una vez. |
+| Enviar tarea | Botón *Nueva tarea* en `/ui`, `./scripts/submit.sh "título" "descripción" [sentry|github|mantis] [ref]` o `POST /webhook/ai-factory` |
 | Ver runs | `GET localhost:8000/runs` · detalle `GET /runs/<id>` · bitácora `GET /runs/<id>/audit` |
 | Aprobar un PR humano | Leer `data/runs/<id>/PR.md` y `git diff main...factory/<id>`, luego `POST /runs/<id>/human-decision {"approve": true}` |
 | Depurar sin n8n | `docker compose exec factory-runner python -m app.cli run "título" "descripción"` |

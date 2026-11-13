@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Factory</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --border: #dfe3e8; --text: #1b1f24; --muted: #5f6b7a;
+  --accent: #3b5bdb; --accent-soft: #e7ecff;
+  --ok: #2b8a3e; --ok-soft: #e3f5e7; --fail: #c92a2a; --fail-soft: #fde8e8;
+  --warn: #b35c00; --warn-soft: #fff1dc; --run: #1971c2; --run-soft: #e2f0fd;
+  --idle: #9aa5b1; --idle-soft: #eef1f4; --skip: #7b8794;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --border: #2b313b; --text: #e6e9ee; --muted: #9aa4b2;
+    --accent: #7c95ff; --accent-soft: #1f2747;
+    --ok: #51cf66; --ok-soft: #15301c; --fail: #ff6b6b; --fail-soft: #3a1717;
+    --warn: #ffa94d; --warn-soft: #3a2810; --run: #4dabf7; --run-soft: #10273d;
+    --idle: #5c6673; --idle-soft: #1c2129; --skip: #7b8794;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent); }
+code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+header .spacer { flex: 1; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--idle); }
+.chip.ok .dot { background: var(--ok); } .chip.fail .dot { background: var(--fail); } .chip.warn .dot { background: var(--warn); }
+.btn { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 5px 12px; }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+.btn.danger { color: var(--fail); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: calc(100vh - 53px); }
+aside { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; position: sticky; top: 53px; height: calc(100vh - 53px); }
+aside .head { padding: 12px 14px 8px; display: flex; gap: 8px; align-items: center; }
+aside .head input { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+.runs { overflow-y: auto; flex: 1; padding: 0 8px 12px; }
+.run-item { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 8px; padding: 8px 10px; margin: 2px 0; }
+.run-item:hover { background: var(--panel-2); }
+.run-item.sel { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.run-item .t { font-weight: 550; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-item .m { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; margin-top: 3px; }
+.comp-link { margin: 4px 8px 0; }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.s-done, .s-merged, .s-approved, .s-pass { background: var(--ok-soft); color: var(--ok); }
+.s-fail, .s-failed, .s-rejected_by_human, .s-reject { background: var(--fail-soft); color: var(--fail); }
+.s-warn, .s-awaiting_human, .s-rejected, .s-human { background: var(--warn-soft); color: var(--warn); }
+.s-running, .s-created, .s-specified, .s-built { background: var(--run-soft); color: var(--run); }
+.s-idle, .s-skipped { background: var(--idle-soft); color: var(--muted); }
+
+main { padding: 16px 20px 40px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.card + .card { margin-top: 14px; }
+.card > h2, .card > .card-h { margin: 0; padding: 12px 16px; font-size: 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card-b { padding: 14px 16px; }
+.run-title { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.run-title h2 { margin: 0; font-size: 19px; }
+.run-title .meta { color: var(--muted); font-size: 12.5px; display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+
+.diagram-wrap { overflow-x: auto; padding: 8px 6px 4px; }
+#diagram { display: block; width: 100%; min-width: 860px; height: auto; }
+.node { cursor: pointer; }
+.node rect.box { fill: var(--panel); stroke: var(--border); stroke-width: 1.5; transition: stroke .15s; }
+.node:hover rect.box { stroke: var(--accent); }
+.node.sel rect.box { stroke: var(--accent); stroke-width: 2.5; }
+.node .bar { fill: var(--idle); }
+.node.st-done .bar { fill: var(--ok); } .node.st-fail .bar { fill: var(--fail); } .node.st-warn .bar { fill: var(--warn); }
+.node.st-running .bar { fill: var(--run); } .node.st-skipped .bar { fill: var(--skip); }
+.node.st-done rect.box { fill: var(--ok-soft); } .node.st-fail rect.box { fill: var(--fail-soft); }
+.node.st-warn rect.box { fill: var(--warn-soft); } .node.st-running rect.box { fill: var(--run-soft); }
+.node.st-running rect.box { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { stroke: var(--run); } }
+.node text { fill: var(--text); font-size: 13px; font-weight: 600; }
+.node text.sub { fill: var(--muted); font-size: 11px; font-weight: 400; }
+.node text.st { font-size: 10.5px; font-weight: 600; fill: var(--muted); }
+.node.st-done text.st { fill: var(--ok); } .node.st-fail text.st { fill: var(--fail); } .node.st-warn text.st { fill: var(--warn); } .node.st-running text.st { fill: var(--run); }
+.edge { fill: none; stroke: var(--idle); stroke-width: 1.6; }
+.edge.on { stroke: var(--accent); stroke-width: 2.2; }
+.edge.dash { stroke-dasharray: 5 4; }
+.edge-label { fill: var(--muted); font-size: 11px; }
+.group-box { fill: none; stroke: var(--border); stroke-dasharray: 4 4; }
+.group-label { fill: var(--muted); font-size: 11px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; padding: 0 16px 12px; font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); padding: 0 10px; overflow-x: auto; }
+.tabs button { background: none; border: 0; padding: 10px 12px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+pre.box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow: auto; max-height: 460px; white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; }
+.section-t { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+.section-t:first-child { margin-top: 0; }
+
+.iter { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 12px; overflow: hidden; }
+.iter > .ih { padding: 9px 12px; background: var(--panel-2); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.iter > .ib { padding: 10px 12px; }
+.rev { border-top: 1px solid var(--border); padding: 8px 0; }
+.rev:first-child { border-top: 0; }
+.rev .rh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rev .rh b { min-width: 70px; }
+ul.findings { margin: 6px 0 0; padding-left: 18px; }
+ul.findings li { margin: 3px 0; }
+.sev { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-right: 4px; }
+.sev.blocker { color: var(--fail); } .sev.major { color: var(--warn); } .sev.minor, .sev.info { color: var(--muted); }
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 82px 120px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); align-items: start; }
+.timeline .ts { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.timeline details summary { cursor: pointer; }
+.timeline details pre { margin-top: 6px; }
+
+.files { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 12px; }
+.files .list { display: flex; flex-direction: column; gap: 2px; max-height: 520px; overflow-y: auto; }
+.files .list button { text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; display: flex; justify-content: space-between; gap: 8px; }
+.files .list button:hover { background: var(--panel-2); }
+.files .list button.on { background: var(--accent-soft); }
+.files .list button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-radius: 10px; background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); margin-bottom: 14px; }
+.banner input { flex: 1; min-width: 180px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
+
+.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(560px, 100%); background: var(--panel); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.12); z-index: 20; display: flex; flex-direction: column; transform: translateX(100%); transition: transform .2s; }
+.drawer.open { transform: none; }
+.drawer .dh { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.drawer .dh h3 { margin: 0; font-size: 16px; flex: 1; }
+.drawer .db { padding: 14px 16px; overflow-y: auto; flex: 1; }
+.x { background: none; border: 0; font-size: 20px; line-height: 1; color: var(--muted); padding: 2px 6px; }
+
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); padding: 0; width: min(520px, calc(100% - 32px)); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog form { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+dialog h3 { margin: 0 0 4px; }
+dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); }
+dialog input, dialog textarea, dialog select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); }
+dialog .row { display: flex; gap: 10px; } dialog .row > * { flex: 1; }
+dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.err { color: var(--fail); font-size: 12.5px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 30; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.on { opacity: .95; }
+.empty { padding: 30px 16px; text-align: center; color: var(--muted); }
+table.cfg { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.cfg th, table.cfg td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.cfg th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tags code { background: var(--panel-2); border: 1px solid var(--border); padding: 0 6px; border-radius: 5px; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  aside { border-right: 0; border-bottom: 1px solid var(--border); max-height: 280px; position: static; height: auto; }
+  main { padding: 14px 16px 40px; }
+  .files { grid-template-columns: 1fr; }
+  .timeline li { grid-template-columns: 70px minmax(0, 1fr); }
+  .timeline li .stg { grid-column: 2; }
+  .timeline li > :last-child { grid-column: 1 / -1; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Factory</h1>
+  <span class="chip" id="chip-health"><span class="dot"></span><span>runner</span></span>
+  <span class="chip" id="chip-mode" hidden></span>
+  <span class="chip" id="chip-refresh" title="Se actualiza cada 3 s"><span class="dot"></span>en vivo</span>
+  <span class="spacer"></span>
+  <a class="btn" id="lnk-n8n" href="http://localhost:5678" target="_blank" rel="noopener">n8n ↗</a>
+  <a class="btn" href="/docs" target="_blank" rel="noopener">API ↗</a>
+  <button class="btn" id="btn-token" title="Token del runner">Token</button>
+  <button class="btn primary" id="btn-new">Nueva tarea</button>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="head"><input id="filter" placeholder="Filtrar runs…" aria-label="Filtrar runs"></div>
+    <button class="btn comp-link" id="btn-components">Componentes del pipeline</button>
+    <div class="runs" id="runs"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<div class="drawer" id="drawer" aria-hidden="true">
+  <div class="dh"><h3 id="dr-title"></h3><span id="dr-badge"></span><button class="x" id="dr-close" aria-label="Cerrar">×</button></div>
+  <div class="db" id="dr-body"></div>
+</div>
+
+<dialog id="dlg-new">
+  <form method="dialog" id="form-new">
+    <h3>Nueva tarea</h3>
+    <label>Título <input name="title" required maxlength="200"></label>
+    <label>Descripción <textarea name="description" rows="6"></textarea></label>
+    <div class="row">
+      <label>Origen
+        <select name="source"><option>manual</option><option>sentry</option><option>github</option><option>gitlab</option><option>mantis</option></select>
+      </label>
+      <label>Referencia <input name="source_ref" placeholder="SIGA-123"></label>
+    </div>
+    <label>URL para el revisor UI (opcional) <input name="ui_url" type="url" placeholder="http://…"></label>
+    <div class="err" id="new-err"></div>
+    <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" id="new-submit" value="ok">Enviar a n8n</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-token">
+  <form method="dialog" id="form-token">
+    <h3>Token del runner</h3>
+    <p class="muted small" style="margin:0">El valor de <code>FACTORY_TOKEN</code> en tu <code>.env</code>. Se guarda sólo en este navegador.</p>
+    <label>X-Factory-Token <input name="token" type="password" autocomplete="off"></label>
+    <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Guardar</button></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- modelo del pipeline
+const REVIEWS = ["security", "ux", "ui", "code", "load"];
+const REVIEW_LABEL = { security: "Security", ux: "UX", ui: "UI", code: "Code", load: "Carga" };
+const NODES = {
+  intake:   { label: "Intake", sub: "webhook n8n", x: 20, y: 150, desc: "La tarea entra por POST /webhook/ai-factory (n8n) y el runner crea el run: carpeta data/runs/<id>/ con run.json y audit.jsonl.", stage: "intake", files: [] },
+  spec:     { label: "Spec Writer", sub: "spec.md", x: 175, y: 150, role: "spec_writer", prompt: "spec_writer", desc: "Lee la tarea, el Brain y el árbol del repo, y escribe la especificación con criterios de aceptación y plan de tests.", stage: "spec", files: [/^spec\.md$/] },
+  build:    { label: "Builder", sub: "TDD · worktree", x: 330, y: 150, role: "builder", prompt: "builder", desc: "Agente con herramientas confinado a su worktree (rama factory/<id>). Escribe tests y código; después la fábrica vuelve a correr los tests y verifica que el diff toque tests.", stage: "build", files: [/^build-\d+\.json$/] },
+  security: { label: "Security", sub: "revisor LLM", x: 510, y: 10, role: "reviewer_security", prompt: "reviewer_security", desc: "Revisa el diff buscando problemas de seguridad.", stage: "review:security", files: [/^review-security-/] },
+  ux:       { label: "UX", sub: "revisor LLM", x: 510, y: 80, role: "reviewer_ux", prompt: "reviewer_ux", desc: "Revisa la experiencia de uso del cambio.", stage: "review:ux", files: [/^review-ux-/] },
+  ui:       { label: "UI", sub: "revisor LLM + visión", x: 510, y: 150, role: "reviewer_ui", prompt: "reviewer_ui", desc: "Revisa la interfaz; si la tarea trae ui_url y el runner tiene Playwright, recibe una captura.", stage: "review:ui", files: [/^review-ui-/] },
+  code:     { label: "Code", sub: "revisor LLM", x: 510, y: 220, role: "reviewer_code", prompt: "reviewer_code", desc: "Revisa calidad, convenciones del Brain y cobertura de tests.", stage: "review:code", files: [/^review-code-/] },
+  load:     { label: "Carga", sub: "Locust · sin LLM", x: 510, y: 290, desc: "Prueba de carga determinista. Umbrales de p95, errores y req/s, y regresión contra el último merge. Sin locustfile pasa como «no aplica».", stage: "review:load", files: [/^review-load-/, /^locust-/, /^loadtest-app-/] },
+  approve:  { label: "Aprobador", sub: "decide el loop", x: 690, y: 150, role: "approver", prompt: "approver", desc: "Consolida las cinco revisiones. Los guardarraíles deterministas (tests en rojo, sin tests, Locust fallido) fuerzan el rechazo aunque el LLM apruebe.", stage: "approve", files: [/^approval-\d+\.json$/] },
+  gate:     { label: "Deploy Gate", sub: "auto o humano", x: 845, y: 150, role: "deploy_gate", prompt: "deploy_gate", desc: "Paths críticos o demasiadas líneas ⇒ revisión humana por regla. El agente puede endurecer la decisión, nunca relajarla.", stage: "gate", files: [/^gate\.json$/] },
+  deploy:   { label: "Deploy", sub: "merge a main", x: 1000, y: 150, desc: "Modo auto: merge local a la rama base. Modo humano (o merge imposible): deja PR.md y la rama esperando decisión.", stage: "deploy", files: [/^PR\.md$/] },
+  human:    { label: "Humano", sub: "PR.md", x: 1000, y: 290, desc: "Leé PR.md y el diff de la rama, y decidí. Aprobar hace el merge; rechazar cierra el run.", stage: "human", files: [/^PR\.md$/] },
+  learn:    { label: "Librarian", sub: "actualiza el Brain", x: 1155, y: 150, role: "librarian", prompt: "librarian", desc: "Extrae lecciones y decisiones del run y las agrega a brain/LESSONS.md y brain/DECISIONS.md.", stage: "learn", files: [] },
+};
+const W = 130, H = 54;
+const EDGES = [
+  ["intake", "spec"], ["spec", "build"],
+  ...REVIEWS.map(r => ["build", r]), ...REVIEWS.map(r => [r, "approve"]),
+  ["approve", "gate"], ["gate", "deploy"], ["deploy", "learn"], ["deploy", "human", "dash"],
+];
+const STATUS_TEXT = { done: "ok", fail: "falló", warn: "atención", running: "en curso", skipped: "no aplica", idle: "pendiente" };
+const RUN_STATUS = { created: "creado", specified: "especificado", built: "construido", rejected: "rechazado (reintenta)", approved: "aprobado", failed: "fallido", merged: "mergeado", awaiting_human: "espera humano", rejected_by_human: "rechazado por humano" };
+const TERMINAL = new Set(["merged", "failed", "rejected_by_human"]);
+
+// ---------------------------------------------------------------- estado
+const S = { token: load("factoryToken") || "", runs: [], sel: null, run: null, audit: [], files: [], cfg: null, tab: "summary", node: null, fileSel: null, filter: "", cache: {} };
+const $ = (s, el = document) => el.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function load(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function store(k, v) { try { localStorage.setItem(k, v); } catch {} }
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2600); }
+function badge(status, text) { return `<span class="badge s-${esc(status)}">${esc(text ?? RUN_STATUS[status] ?? status)}</span>`; }
+function ago(iso) {
+  if (!iso) return "";
+  const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return "hace " + Math.round(s) + " s";
+  if (s < 3600) return "hace " + Math.round(s / 60) + " min";
+  if (s < 86400) return "hace " + Math.round(s / 3600) + " h";
+  return new Date(iso).toLocaleDateString();
+}
+const hhmm = iso => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const kb = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB";
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "X-Factory-Token": S.token, ...(opts.body ? { "Content-Type": "application/json" } : {}), ...(opts.headers || {}) } });
+  if (r.status === 401) { askToken(); throw new Error("token inválido"); }
+  if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch {} throw new Error(d); }
+  return (r.headers.get("content-type") || "").includes("json") ? r.json() : r.text();
+}
+
+// ---------------------------------------------------------------- estado de cada nodo
+function nodeStates(run, audit) {
+  const st = Object.fromEntries(Object.keys(NODES).map(k => [k, { s: "idle", note: "" }]));
+  if (!run) return st;
+  const has = stage => audit.some(e => e.stage === stage);
+  const status = run.status;
+  const live = !TERMINAL.has(status) && status !== "awaiting_human";
+  const it = String(run.iteration || 0);
+  const revs = (run.reviews || {})[it] || {};
+  st.intake = { s: "done", note: "" };
+  if (has("spec")) st.spec = { s: "done", note: "" }; else if (live) st.spec = { s: "running", note: "" };
+
+  if (run.iteration > 0) {
+    const t = run.tests || {};
+    st.build = { s: t.passed ? "done" : "fail", note: `iteración ${run.iteration}${t.passed ? "" : " · tests en rojo"}` };
+  }
+  if (live && (status === "specified" || status === "rejected")) st.build = { s: "running", note: `iteración ${(run.iteration || 0) + 1}` };
+
+  const reviewsRunning = live && status === "built";
+  for (const k of REVIEWS) {
+    const v = revs[k];
+    if (v) {
+      const s = v.skipped ? "skipped" : v.verdict === "pass" ? "done" : "fail";
+      const bl = (v.findings || []).filter(f => f.severity === "blocker").length;
+      st[k] = { s, note: v.skipped ? "" : (bl ? `${bl} blocker` : (v.score != null ? `score ${v.score}` : "")) };
+    } else if (reviewsRunning) st[k] = { s: "running", note: "" };
+  }
+
+  const ap = run.approval;
+  if (ap) st.approve = { s: ap.decision === "approve" ? "done" : (status === "rejected" ? "warn" : "fail"), note: ap.decision === "approve" ? "aprobado" : "rechazado" };
+  else if (reviewsRunning && REVIEWS.every(k => revs[k])) st.approve = { s: "running", note: "" };
+
+  if (run.gate) st.gate = { s: run.gate.mode === "auto" ? "done" : "warn", note: run.gate.mode === "auto" ? "auto" : "humano" };
+  else if (live && status === "approved") st.gate = { s: "running", note: "" };
+
+  const dep = run.deploy;
+  if (dep) st.deploy = { s: dep.status === "merged" ? "done" : "warn", note: dep.status === "merged" ? `merge ${String(dep.commit || "").slice(0, 7)}` : "PR humano" };
+  else if (live && run.gate) st.deploy = { s: "running", note: "" };
+
+  const humanEv = audit.filter(e => e.stage === "human").pop();
+  if (status === "awaiting_human") st.human = { s: "warn", note: "esperando decisión" };
+  else if (humanEv) st.human = { s: humanEv.event === "approve" ? "done" : "fail", note: humanEv.event === "approve" ? "aprobó" : "rechazó" };
+
+  if (has("learn")) st.learn = { s: "done", note: "" };
+  else if ((dep || status === "failed") && (Date.now() - new Date(run.updated_at)) < 30 * 60e3) st.learn = { s: "running", note: "" };
+
+  // Si nada se movió en 30 min, lo "en curso" probablemente quedó colgado: mostralo como pendiente.
+  if (Date.now() - new Date(run.updated_at) > 30 * 60e3) for (const k in st) if (st[k].s === "running") st[k] = { s: "idle", note: "sin actividad" };
+  return st;
+}
+
+function activeEdges(st, run) {
+  const on = new Set();
+  for (const [a, b] of EDGES) if (st[a].s !== "idle" && st[b].s !== "idle") on.add(a + ">" + b);
+  return on;
+}
+
+// ---------------------------------------------------------------- diagrama SVG
+function diagram(run, audit) {
+  const st = nodeStates(run, audit);
+  const on = activeEdges(st, run);
+  const cx = k => NODES[k].x, cy = k => NODES[k].y;
+  const out = [];
+  out.push(`<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+    <marker id="arr-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker></defs>`);
+  out.push(`<rect class="group-box" x="498" y="0" width="154" height="356" rx="10"/><text class="group-label" x="575" y="372" text-anchor="middle">revisores en paralelo</text>`);
+  for (const [a, b, kind] of EDGES) {
+    const A = NODES[a], B = NODES[b];
+    let d;
+    if (kind === "dash") d = `M${A.x + W / 2},${A.y + H} L${B.x + W / 2},${B.y}`;
+    else {
+      const x1 = A.x + W, y1 = A.y + H / 2, x2 = B.x, y2 = B.y + H / 2, mx = (x1 + x2) / 2;
+      d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2 - 2},${y2}`;
+    }
+    const isOn = on.has(a + ">" + b);
+    out.push(`<path class="edge${isOn ? " on" : ""}${kind ? " " + kind : ""}" d="${d}" marker-end="url(#${isOn ? "arr-on" : "arr"})"/>`);
+  }
+  // loop de rechazo Aprobador → Builder (por arriba) y salida a Librarian por max_iterations (por abajo)
+  const loopOn = run && (run.iteration > 1 || run.status === "rejected");
+  const ax = NODES.approve.x + W / 2, bx = NODES.build.x + W / 2;
+  out.push(`<path class="edge dash${loopOn ? " on" : ""}" d="M${ax},${cy("approve")} C${ax},${-60} ${bx},${-60} ${bx},${cy("build") - 2}" marker-end="url(#${loopOn ? "arr-on" : "arr"})"/>`);
+  out.push(`<text class="edge-label" x="${(ax + bx) / 2}" y="-30" text-anchor="middle">rechazo · vuelve con feedback (≤ max_iterations)</text>`);
+  const failOn = run && run.status === "failed";
+  const lx = NODES.learn.x + W / 2;
+  out.push(`<path class="edge dash${failOn ? " on" : ""}" d="M${ax},${cy("approve") + H} C${ax},${420} ${lx},${420} ${lx},${cy("learn") + H + 2}" marker-end="url(#${failOn ? "arr-on" : "arr"})"/>`);
+  out.push(`<text class="edge-label" x="${(ax + lx) / 2 + 40}" y="404" text-anchor="middle">máx. iteraciones ⇒ failed</text>`);
+
+  for (const [k, n] of Object.entries(NODES)) {
+    const s = st[k];
+    const stText = s.note || STATUS_TEXT[s.s];
+    out.push(`<g class="node st-${s.s}${S.node === k ? " sel" : ""}" data-node="${k}" tabindex="0" role="button" aria-label="${esc(n.label)}: ${esc(STATUS_TEXT[s.s])}">
+      <rect class="box" x="${n.x}" y="${n.y}" width="${W}" height="${H}" rx="9"/>
+      <rect class="bar" x="${n.x}" y="${n.y + 8}" width="4" height="${H - 16}" rx="2"/>
+      <text x="${n.x + 14}" y="${n.y + 21}">${esc(n.label)}</text>
+      <text class="sub" x="${n.x + 14}" y="${n.y + 36}">${esc(n.sub)}</text>
+      <text class="st" x="${n.x + 14}" y="${n.y + 49}">${run ? esc(stText) : ""}</text>
+    </g>`);
+  }
+  return `<svg id="diagram" viewBox="0 -80 1300 510" xmlns="http://www.w3.org/2000/svg">${out.join("")}</svg>`;
+}
+
+const LEGEND = `<div class="legend"><span style="--c:var(--ok)">ok</span><span style="--c:var(--run)">en curso</span><span style="--c:var(--warn)">atención / humano</span><span style="--c:var(--fail)">falló</span><span style="--c:var(--idle)">pendiente</span></div>`;
+
+// ---------------------------------------------------------------- lista de runs
+function renderRuns() {
+  const f = S.filter.toLowerCase();
+  const list = S.runs.filter(r => !f || (r.title + " " + r.id + " " + r.status).toLowerCase().includes(f));
+  $("#runs").innerHTML = list.length ? list.map(r => `
+    <button class="run-item${S.sel === r.id ? " sel" : ""}" data-run="${esc(r.id)}">
+      <span class="t">${esc(r.title)}</span>
+      <span class="m">${badge(r.status)}<span>it ${esc(r.iteration)}</span><span>${esc(ago(r.updated_at))}</span></span>
+    </button>`).join("") : `<div class="empty">${S.runs.length ? "Sin coincidencias" : "Todavía no hay runs.<br>Enviá una tarea con «Nueva tarea»."}</div>`;
+}
+
+// ---------------------------------------------------------------- vista principal
+function render() {
+  renderRuns();
+  const m = $("#main");
+  if (!S.sel || !S.run) { m.innerHTML = componentsView(); bindDiagram(); return; }
+  const r = S.run, t = r.task;
+  const tabs = [["summary", "Resumen"], ["iters", `Iteraciones (${r.iteration})`], ["audit", `Bitácora (${S.audit.length})`], ["files", `Artefactos (${S.files.length})`]];
+  m.innerHTML = `
+    ${r.status === "awaiting_human" ? humanBanner(r) : ""}
+    <div class="run-title">
+      <div style="flex:1;min-width:240px">
+        <h2>${esc(t.title)}</h2>
+        <div class="meta"><span class="mono">${esc(r.id)}</span><span>${esc(t.source)}${t.source_ref ? " · " + esc(t.source_ref) : ""}</span>${r.branch ? `<span class="mono">${esc(r.branch)}</span>` : ""}<span>actualizado ${esc(ago(r.updated_at))}</span></div>
+      </div>
+      ${badge(r.status)}
+    </div>
+    <div class="card"><div class="card-h">Pipeline <span class="muted small">— clic en una etapa para ver el detalle</span></div>
+      <div class="diagram-wrap">${diagram(r, S.audit)}</div>${LEGEND}</div>
+    <div class="card">
+      <div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${S.tab === k ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
+      <div class="card-b" id="tab-body">${tabBody()}</div>
+    </div>`;
+  bindDiagram();
+  if (S.tab === "iters") loadIterFiles();
+  if (S.tab === "files" && S.fileSel) showFile(S.fileSel);
+}
+
+function humanBanner(r) {
+  return `<div class="banner"><b>Este run espera tu decisión.</b>
+    <span class="muted small">${esc((r.gate?.reasons || []).slice(0, 2).join(" · ") || r.deploy?.reason || "")}</span>
+    <input id="human-note" placeholder="Nota (opcional)">
+    <button class="btn" data-act="pr">Ver PR.md</button>
+    <button class="btn danger" data-act="reject">Rechazar</button>
+    <button class="btn ok" data-act="approve">Aprobar y mergear</button></div>`;
+}
+
+function tabBody() {
+  const r = S.run;
+  if (S.tab === "summary") {
+    const it = String(r.iteration);
+    const revs = r.reviews?.[it] || {};
+    return `<div class="grid2">
+      <div><div class="section-t">Tarea</div><div style="white-space:pre-wrap">${esc(r.task.description) || '<span class="muted">sin descripción</span>'}</div>
+        ${r.task.ui_url ? `<p class="small">UI: <a href="${esc(r.task.ui_url)}" target="_blank" rel="noopener">${esc(r.task.ui_url)}</a></p>` : ""}</div>
+      <div><div class="section-t">Estado</div><dl class="kv">
+        <dt>Iteración</dt><dd>${esc(r.iteration)} / ${esc(S.cfg?.pipeline?.max_iterations ?? "?")}</dd>
+        <dt>Tests</dt><dd>${r.tests ? badge(r.tests.passed ? "pass" : "fail", r.tests.passed ? "en verde" : "en rojo") : "—"}</dd>
+        <dt>TDD</dt><dd>${r.tdd ? badge(r.tdd.tests_touched ? "pass" : "fail", r.tdd.tests_touched ? "toca tests" : "sin tests") : "—"}</dd>
+        <dt>Revisiones</dt><dd>${Object.keys(revs).length ? REVIEWS.map(k => revs[k] ? badge(revs[k].skipped ? "skipped" : revs[k].verdict, REVIEW_LABEL[k]) : "").join(" ") : "—"}</dd>
+        <dt>Aprobador</dt><dd>${r.approval ? badge(r.approval.decision, r.approval.decision === "approve" ? "aprobó" : "rechazó") : "—"}</dd>
+        <dt>Gate</dt><dd>${r.gate ? badge(r.gate.mode === "auto" ? "pass" : "warn", r.gate.mode) + ` <span class="muted small">${esc(r.gate.lines_changed)} líneas, ${esc(r.gate.files?.length)} archivos</span>` : "—"}</dd>
+        <dt>Deploy</dt><dd>${r.deploy ? badge(r.deploy.status) + (r.deploy.commit ? ` <code>${esc(r.deploy.commit.slice(0, 10))}</code>` : "") : "—"}</dd>
+        <dt>Worktree</dt><dd class="mono small">${esc(r.worktree || "—")}</dd>
+      </dl></div></div>
+      ${r.approval?.feedback ? `<div class="section-t">Feedback del aprobador</div><div style="white-space:pre-wrap">${esc(r.approval.feedback)}</div>${list(r.approval.must_fix)}` : ""}
+      ${r.gate?.reasons?.length ? `<div class="section-t">Por qué revisión humana</div>${list(r.gate.reasons)}` : ""}
+      ${r.tests && !r.tests.passed ? `<div class="section-t">Salida de los tests</div><pre class="box">${esc(r.tests.output)}</pre>` : ""}`;
+  }
+  if (S.tab === "iters") {
+    if (!r.iteration) return `<div class="empty">Todavía no hubo iteraciones del Builder.</div>`;
+    let h = "";
+    for (let i = r.iteration; i >= 1; i--) {
+      const revs = r.reviews?.[String(i)] || {};
+      h += `<div class="iter"><div class="ih"><b>Iteración ${i}</b><span id="iter-ap-${i}"></span><span class="muted small" id="iter-b-${i}"></span></div><div class="ib">
+        ${REVIEWS.map(k => revs[k] ? reviewBlock(k, revs[k]) : `<div class="rev"><div class="rh"><b>${REVIEW_LABEL[k]}</b>${badge("idle", "sin resultado")}</div></div>`).join("")}
+        <div id="iter-apd-${i}"></div></div></div>`;
+    }
+    return h;
+  }
+  if (S.tab === "audit") {
+    if (!S.audit.length) return `<div class="empty">Sin eventos.</div>`;
+    return `<ul class="timeline">${S.audit.slice().reverse().map(e => `<li>
+      <span class="ts" title="${esc(e.ts)}">${esc(hhmm(e.ts))}</span>
+      <span class="stg"><b>${esc(e.stage)}</b></span>
+      <div>${badge(eventStatus(e), e.event)} ${eventSummary(e)}
+        ${Object.keys(e.data || {}).length ? `<details><summary class="muted small">datos</summary><pre class="box">${esc(JSON.stringify(e.data, null, 2))}</pre></details>` : ""}</div></li>`).join("")}</ul>`;
+  }
+  if (S.tab === "files") {
+    if (!S.files.length) return `<div class="empty">Sin artefactos.</div>`;
+    return `<div class="files"><div class="list">${S.files.map(f => `<button data-file="${esc(f.name)}" class="${S.fileSel === f.name ? "on" : ""}"><span>${esc(f.name)}</span><span class="muted small">${kb(f.size)}</span></button>`).join("")}</div>
+      <div id="file-view"><div class="empty">Elegí un archivo.</div></div></div>`;
+  }
+  return "";
+}
+
+const list = a => a?.length ? `<ul class="findings">${a.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+function reviewBlock(k, v) {
+  const findings = v.findings || [];
+  const m = v.metrics;
+  return `<div class="rev"><div class="rh"><b>${esc(REVIEW_LABEL[k] || k)}</b>${badge(v.skipped ? "skipped" : v.verdict, v.skipped ? "no aplica" : v.verdict)}
+    ${v.score != null ? `<span class="muted small">score ${esc(v.score)}</span>` : ""}<span class="small">${esc(v.summary || "")}</span></div>
+    ${m ? `<div class="muted small mono" style="margin-top:4px">p95 ${esc(m.p95_ms)} ms · errores ${esc(m.failure_ratio)} · ${esc(m.rps)} req/s · ${esc(m.requests)} req</div>` : ""}
+    ${findings.length ? `<ul class="findings">${findings.map(f => `<li><span class="sev ${esc(f.severity)}">${esc(f.severity)}</span>${f.file ? `<code>${esc(f.file)}</code> ` : ""}${esc(f.issue)}${f.suggestion ? ` <span class="muted">— ${esc(f.suggestion)}</span>` : ""}</li>`).join("")}</ul>` : ""}</div>`;
+}
+
+async function loadIterFiles() {
+  const r = S.run;
+  for (let i = 1; i <= r.iteration; i++) {
+    const [ap, b] = await Promise.all([fileJson(`approval-${i}.json`), fileJson(`build-${i}.json`)]);
+    const apEl = $("#iter-ap-" + i), bEl = $("#iter-b-" + i), d = $("#iter-apd-" + i);
+    if (!apEl) return;
+    if (b) bEl.textContent = `${b.steps ?? "?"} pasos del agente · tests ${b.tests?.passed ? "en verde" : "en rojo"}${b.summary ? " · " + b.summary.slice(0, 140) : ""}`;
+    if (ap) {
+      apEl.innerHTML = badge(ap.decision, ap.decision === "approve" ? "aprobada" : "rechazada");
+      d.innerHTML = `<div class="rev"><div class="rh"><b>Aprobador</b><span class="small">${esc(ap.feedback || "")}</span></div>${list(ap.must_fix)}</div>`;
+    }
+  }
+}
+async function fileJson(name) {
+  if (!S.files.some(f => f.name === name)) return null;
+  const key = S.sel + "/" + name;
+  if (!(key in S.cache)) { try { S.cache[key] = JSON.parse(await api(`/runs/${S.sel}/files/${encodeURIComponent(name)}`)); } catch { S.cache[key] = null; } }
+  return S.cache[key];
+}
+
+function eventStatus(e) {
+  const ev = e.event;
+  if (["pass", "approve", "merged", "auto", "written", "created", "brain_updated"].includes(ev)) return "done";
+  if (["fail", "reject", "failed"].includes(ev)) return "fail";
+  if (["human", "awaiting_human"].includes(ev)) return "warn";
+  if (e.stage === "build") return e.data?.tests_passed ? "done" : "fail";
+  return "idle";
+}
+function eventSummary(e) {
+  const d = e.data || {};
+  const p = [];
+  if (e.stage === "intake") p.push(d.title);
+  if (e.stage === "spec") p.push(`${d.chars} caracteres · ${d.model}`);
+  if (e.stage === "build") p.push(`it ${d.iteration} · ${d.steps} pasos · ${d.files?.length ?? 0} archivos · commit ${String(d.commit || "").slice(0, 7)}`);
+  if (e.stage.startsWith("review:")) p.push(`it ${d.iteration}` + (d.blockers ? ` · ${d.blockers} blocker` : "") + (d.metrics ? ` · p95 ${d.metrics.p95_ms} ms` : ""));
+  if (e.stage === "approve") p.push(`it ${d.iteration}` + (d.forced?.length ? ` · forzado: ${d.forced[0]}` : "") + (d.can_retry ? " · reintenta" : ""));
+  if (e.stage === "gate" && d.reasons?.length) p.push(d.reasons[0]);
+  if (e.stage === "deploy") p.push(d.commit ? `commit ${d.commit.slice(0, 7)}` : (d.reason || d.branch || ""));
+  if (e.stage === "pipeline") p.push(d.reason);
+  if (e.stage === "human" && d.note) p.push(d.note);
+  if (e.stage === "learn") p.push(`${d.lessons?.length ?? 0} lecciones · ${d.decisions?.length ?? 0} decisiones`);
+  return `<span class="small">${esc(p.filter(Boolean).join(" "))}</span>`;
+}
+
+async function showFile(name) {
+  S.fileSel = name;
+  document.querySelectorAll("[data-file]").forEach(b => b.classList.toggle("on", b.dataset.file === name));
+  const v = $("#file-view");
+  if (!v) return;
+  try {
+    let txt = await api(`/runs/${S.sel}/files/${encodeURIComponent(name)}`);
+    if (name.endsWith(".json")) { try { txt = JSON.stringify(JSON.parse(txt), null, 2); } catch {} }
+    v.innerHTML = `<div class="small muted">${esc(name)}</div><pre class="box" style="max-height:560px">${esc(txt)}</pre>`;
+  } catch (e) { v.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+// ---------------------------------------------------------------- vista de componentes
+function componentsView() {
+  const c = S.cfg;
+  const roles = c?.roles || {};
+  const lt = c?.loadtest || {}, dp = c?.deploy || {};
+  return `
+    <div class="run-title"><div><h2>Componentes del pipeline</h2><div class="meta"><span>Elegí un run a la izquierda para ver su recorrido.</span></div></div></div>
+    <div class="card"><div class="card-h">Flujo <span class="muted small">— clic en una etapa para ver su rol, modelo y prompt</span></div>
+      <div class="diagram-wrap">${diagram(null, [])}</div></div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card"><h2>Infraestructura</h2><div class="card-b"><dl class="kv">
+        <dt>n8n</dt><dd>orquestador · <a href="${esc(c?.n8n || "http://localhost:5678")}" target="_blank" rel="noopener">${esc(c?.n8n || "http://localhost:5678")}</a></dd>
+        <dt>factory-runner</dt><dd>FastAPI, un endpoint por etapa · <a href="/docs" target="_blank">/docs</a></dd>
+        <dt>OmniRoute</dt><dd class="mono small">${esc(c?.omniroute || "—")}</dd>
+        <dt>Modo LLM</dt><dd>${c ? (c.mock ? badge("warn", "mock (sin tokens)") : badge("pass", "modelos reales")) : "—"}</dd>
+        <dt>Rama</dt><dd><code>${esc(c?.pipeline?.branch_prefix || "factory/")}&lt;run_id&gt;</code> → <code>${esc(c?.pipeline?.base_branch || "main")}</code></dd>
+        <dt>Tests</dt><dd><code>${esc(c?.project?.test_command || "—")}</code></dd>
+      </dl></div></div>
+      <div class="card"><h2>Guardarraíles</h2><div class="card-b"><dl class="kv">
+        <dt>Iteraciones</dt><dd>máx. ${esc(c?.pipeline?.max_iterations ?? "—")} vueltas Builder ⇄ Aprobador</dd>
+        <dt>Auto-merge</dt><dd>hasta ${esc(dp.max_auto_lines ?? "—")} líneas cambiadas</dd>
+        <dt>Locust</dt><dd>${lt.enabled ? `p95 ≤ ${esc(lt.thresholds?.p95_ms)} ms · errores ≤ ${esc(lt.thresholds?.failure_ratio)} · regresión ≤ ${esc(lt.max_regression_pct)}%` : "deshabilitado"}</dd>
+        <dt>Comandos</dt><dd><div class="tags">${(c?.project?.allowed_commands || []).map(x => `<code>${esc(x)}</code>`).join("")}</div></dd>
+        <dt>Paths críticos</dt><dd><div class="tags">${(dp.critical_paths || []).map(x => `<code>${esc(x)}</code>`).join("")}</div></dd>
+      </dl></div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Agentes y modelos</h2><div class="card-b" style="overflow-x:auto">
+      <table class="cfg"><thead><tr><th>Rol</th><th>Modelo (combo OmniRoute)</th><th>Temperatura</th><th>Prompt</th></tr></thead><tbody>
+      ${Object.entries(roles).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="mono">${esc(v.model)}</td><td>${esc(v.temperature)}${v.max_steps ? ` · ${esc(v.max_steps)} pasos` : ""}</td><td><button class="btn small" data-prompt="${esc(k)}">ver</button></td></tr>`).join("")}
+      </tbody></table></div></div>
+    <div class="card"><h2>Brain <span class="muted small">— memoria que leen todos los agentes</span></h2><div class="card-b" id="brain-body"><span class="muted">Cargando…</span></div></div>`;
+}
+
+async function loadBrain() {
+  const el = $("#brain-body");
+  if (!el) return;
+  try {
+    const files = await api("/brain");
+    el.innerHTML = `<div class="files"><div class="list">${files.map(f => `<button data-brain="${esc(f.name)}"><span>${esc(f.name)}</span><span class="muted small">${kb(f.size)}</span></button>`).join("")}</div><div id="brain-view"><div class="empty">Elegí un archivo.</div></div></div>`;
+  } catch (e) { el.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+// ---------------------------------------------------------------- drawer de etapa
+async function openNode(k) {
+  S.node = k;
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("sel", n.dataset.node === k));
+  const n = NODES[k];
+  const role = n.role && S.cfg?.roles?.[n.role];
+  const st = nodeStates(S.run, S.audit)[k];
+  $("#dr-title").textContent = n.label;
+  $("#dr-badge").innerHTML = S.run ? badge(st.s, STATUS_TEXT[st.s]) : "";
+  const evs = S.run ? S.audit.filter(e => e.stage === n.stage) : [];
+  const files = S.run ? S.files.filter(f => n.files.some(rx => rx.test(f.name))) : [];
+  let extra = "";
+  if (S.run && REVIEWS.includes(k)) {
+    const v = S.run.reviews?.[String(S.run.iteration)]?.[k];
+    if (v) extra = `<div class="section-t">Resultado (iteración ${S.run.iteration})</div>${reviewBlock(k, v)}`;
+  }
+  if (S.run && k === "gate" && S.run.gate) extra = `<div class="section-t">Decisión</div><dl class="kv"><dt>Modo</dt><dd>${esc(S.run.gate.mode)}</dd><dt>Líneas</dt><dd>${esc(S.run.gate.lines_changed)}</dd></dl>${list(S.run.gate.reasons)}<div class="section-t">Archivos</div>${list(S.run.gate.files)}`;
+  if (S.run && k === "approve" && S.run.approval) extra = `<div class="section-t">Última decisión</div><p>${esc(S.run.approval.feedback || "")}</p>${list(S.run.approval.must_fix)}`;
+  if (S.run && k === "build" && S.run.tests) extra = `<div class="section-t">Tests (corridos por la fábrica)</div><pre class="box">${esc(S.run.tests.output || "(sin salida)")}</pre>`;
+  if (k === "load" && S.cfg) { const lt = S.cfg.loadtest; extra = `<div class="section-t">Configuración</div><dl class="kv"><dt>locustfile</dt><dd class="mono">${esc(lt.locustfile)}</dd><dt>Usuarios</dt><dd>${esc(lt.users)} · ${esc(lt.run_time)}</dd><dt>Umbrales</dt><dd class="mono small">${esc(JSON.stringify(lt.thresholds))}</dd></dl>` + extra; }
+
+  $("#dr-body").innerHTML = `<p>${esc(n.desc)}</p>
+    ${role ? `<div class="section-t">Agente</div><dl class="kv"><dt>Rol</dt><dd>${esc(n.role)}</dd><dt>Modelo</dt><dd class="mono">${esc(role.model)}</dd><dt>Temperatura</dt><dd>${esc(role.temperature)}</dd>${role.max_steps ? `<dt>Máx. pasos</dt><dd>${esc(role.max_steps)}</dd>` : ""}</dl>` : (n.role ? "" : `<div class="section-t">Tipo</div><p class="muted">Paso determinista, sin LLM.</p>`)}
+    ${extra}
+    ${S.run ? `<div class="section-t">Eventos en este run (${evs.length})</div>${evs.length ? `<ul class="timeline">${evs.map(e => `<li><span class="ts">${esc(hhmm(e.ts))}</span><span>${badge(eventStatus(e), e.event)}</span><div>${eventSummary(e)}</div></li>`).join("")}</ul>` : `<p class="muted">Ninguno todavía.</p>`}` : ""}
+    ${files.length ? `<div class="section-t">Artefactos</div><div class="tags">${files.map(f => `<button class="btn small" data-goto-file="${esc(f.name)}">${esc(f.name)}</button>`).join(" ")}</div>` : ""}
+    ${n.prompt ? `<div class="section-t">Prompt <span class="mono">prompts/${esc(n.prompt)}.md</span></div><pre class="box" id="dr-prompt">Cargando…</pre>` : ""}`;
+  $("#drawer").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden", "false");
+  if (n.prompt) {
+    try { $("#dr-prompt").textContent = await api(`/prompts/${n.prompt}`); } catch (e) { $("#dr-prompt").textContent = e.message; }
+  }
+}
+function closeDrawer() {
+  S.node = null;
+  $("#drawer").classList.remove("open");
+  $("#drawer").setAttribute("aria-hidden", "true");
+  document.querySelectorAll(".node.sel").forEach(n => n.classList.remove("sel"));
+}
+function bindDiagram() { if (!S.sel) loadBrain(); }
+
+// ---------------------------------------------------------------- datos
+async function refreshRuns() {
+  try {
+    S.runs = await api("/runs");
+    $("#chip-refresh").className = "chip ok";
+  } catch { $("#chip-refresh").className = "chip fail"; }
+}
+async function refreshRun(full) {
+  if (!S.sel) return;
+  const id = S.sel;
+  try {
+    const [run, audit, files] = await Promise.all([api(`/runs/${id}`), api(`/runs/${id}/audit`), api(`/runs/${id}/files`)]);
+    if (S.sel !== id) return;
+    const changed = full || !S.run || run.updated_at !== S.run.updated_at || audit.length !== S.audit.length || files.length !== S.files.length;
+    S.run = run; S.audit = audit; S.files = files;
+    if (changed) { S.cache = Object.fromEntries(Object.entries(S.cache).filter(([k]) => !k.startsWith(id + "/"))); return true; }
+  } catch (e) { toast(e.message); }
+  return false;
+}
+async function select(id) {
+  S.sel = id; S.run = null; S.tab = "summary"; S.fileSel = null;
+  closeDrawer();
+  if (id) location.hash = id; else history.replaceState(null, "", location.pathname);
+  if (id) await refreshRun(true);
+  render();
+}
+async function tick() {
+  const before = JSON.stringify(S.runs);
+  await refreshRuns();
+  const runChanged = await refreshRun(false);
+  // No re-renderizar si nada cambió: así no se pierde el scroll ni la selección de texto.
+  if (runChanged) { const node = S.node; render(); if (node) openNode(node); }
+  else if (JSON.stringify(S.runs) !== before) renderRuns();
+}
+async function health() {
+  try {
+    const h = await (await fetch("/health")).json();
+    $("#chip-health").className = "chip ok";
+    $("#chip-health").lastElementChild.textContent = "runner ok";
+    const m = $("#chip-mode"); m.hidden = false; m.className = "chip " + (h.mock ? "warn" : "ok");
+    m.innerHTML = `<span class="dot"></span>${h.mock ? "LLM mock" : "LLM real"}`;
+  } catch { $("#chip-health").className = "chip fail"; $("#chip-health").lastElementChild.textContent = "runner caído"; }
+}
+
+// ---------------------------------------------------------------- acciones
+function askToken() {
+  if ($("#dlg-token").open) return;
+  $("#form-token").token.value = S.token;
+  $("#dlg-token").showModal();
+}
+$("#dlg-token").addEventListener("close", async () => {
+  if ($("#dlg-token").returnValue !== "ok") return;
+  S.token = $("#form-token").token.value.trim(); store("factoryToken", S.token);
+  await boot();
+});
+$("#btn-token").onclick = askToken;
+$("#btn-new").onclick = () => { $("#new-err").textContent = ""; $("#dlg-new").showModal(); };
+$("#form-new").addEventListener("submit", async ev => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  const body = Object.fromEntries([...f].map(([k, v]) => [k, String(v).trim() || null]));
+  body.description ??= "";
+  $("#new-submit").disabled = true;
+  try {
+    await api("/submit", { method: "POST", body: JSON.stringify(body) });
+    $("#dlg-new").close(); ev.target.reset();
+    toast("Tarea enviada a n8n. El run aparece en unos segundos.");
+    setTimeout(async () => { await refreshRuns(); if (S.runs[0] && !S.sel) select(S.runs[0].id); else renderRuns(); }, 2000);
+  } catch (e) { $("#new-err").textContent = e.message; }
+  finally { $("#new-submit").disabled = false; }
+});
+$("#filter").oninput = e => { S.filter = e.target.value; renderRuns(); };
+$("#btn-components").onclick = () => select(null);
+$("#dr-close").onclick = closeDrawer;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); if ((e.key === "Enter" || e.key === " ") && e.target.dataset?.node) { e.preventDefault(); openNode(e.target.dataset.node); } });
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-run],[data-tab],[data-node],[data-file],[data-brain],[data-prompt],[data-goto-file],[data-act]");
+  if (!t) return;
+  const d = t.dataset;
+  if (d.run) return select(d.run);
+  if (d.tab) { S.tab = d.tab; render(); return; }
+  if (d.node) return openNode(d.node);
+  if (d.file) return showFile(d.file);
+  if (d.gotoFile) { closeDrawer(); S.tab = "files"; S.fileSel = d.gotoFile; render(); return; }
+  if (d.brain) {
+    document.querySelectorAll("[data-brain]").forEach(b => b.classList.toggle("on", b === t));
+    try { $("#brain-view").innerHTML = `<pre class="box">${esc(await api("/brain/" + encodeURIComponent(d.brain)))}</pre>`; } catch (er) { toast(er.message); }
+    return;
+  }
+  if (d.prompt) { const k = Object.keys(NODES).find(n => NODES[n].role === d.prompt); if (k) openNode(k); return; }
+  if (d.act === "pr") { S.tab = "files"; S.fileSel = "PR.md"; render(); return; }
+  if (d.act === "approve" || d.act === "reject") {
+    const approve = d.act === "approve";
+    if (!confirm(approve ? "¿Aprobar y mergear la rama a la rama base?" : "¿Rechazar este run?")) return;
+    t.disabled = true;
+    try {
+      const r = await api(`/runs/${S.sel}/human-decision`, { method: "POST", body: JSON.stringify({ approve, note: $("#human-note")?.value || "" }) });
+      toast(approve ? `Resultado: ${r.status}` : "Run rechazado");
+      await Promise.all([refreshRun(true), refreshRuns()]); render();
+    } catch (er) { toast(er.message); t.disabled = false; }
+  }
+});
+
+async function boot() {
+  health();
+  try { S.cfg = await api("/pipeline"); if (S.cfg.n8n) $("#lnk-n8n").href = S.cfg.n8n; } catch {}
+  await refreshRuns();
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h && S.runs.some(r => r.id === h)) await select(h); else render();
+}
+window.addEventListener("hashchange", () => {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h !== (S.sel || "") && (!h || S.runs.some(r => r.id === h))) select(h || null);
+});
+boot();
+setInterval(tick, 3000);
+setInterval(health, 15000);
+</script>
+</body>
+</html>

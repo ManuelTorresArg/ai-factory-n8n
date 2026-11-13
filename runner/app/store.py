@@ -91,8 +91,8 @@ class RunStore:
             f = d / "run.json"
             if f.exists():
                 r = json.loads(f.read_text(encoding="utf-8"))
-                out.append({k: r.get(k) for k in ("id", "status", "iteration", "branch", "updated_at")}
-                           | {"title": r["task"]["title"]})
+                out.append({k: r.get(k) for k in ("id", "status", "iteration", "branch", "created_at", "updated_at")}
+                           | {"title": r["task"]["title"], "source": r["task"].get("source")})
         return out
 
     # ---- artefactos y auditoría ----------------------------------------
@@ -104,6 +104,11 @@ class RunStore:
     def read(self, run_id: str, name: str) -> str:
         f = self.path(run_id) / name
         return f.read_text(encoding="utf-8") if f.exists() else ""
+
+    def files(self, run_id: str) -> list[dict]:
+        """Artefactos del run (spec.md, review-*.json, PR.md, CSV de Locust...) para la UI."""
+        return [{"name": f.name, "size": f.stat().st_size}
+                for f in sorted(self.path(run_id).iterdir()) if f.is_file() and not f.name.endswith(".tmp")]
 
     def audit(self, run_id: str, stage: str, event: str, data: dict | None = None) -> None:
         line = {"ts": now(), "stage": stage, "event": event, "data": data or {}}
