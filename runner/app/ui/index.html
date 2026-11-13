@@ -283,7 +283,7 @@ const kb = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB";
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { "X-Factory-Token": S.token, ...(opts.body ? { "Content-Type": "application/json" } : {}), ...(opts.headers || {}) } });
-  if (r.status === 401) { askToken(); throw new Error("token inválido"); }
+  if (r.status === 401) { S.authFailed = true; askToken(); throw new Error("token inválido"); }
   if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch {} throw new Error(d); }
   return (r.headers.get("content-type") || "").includes("json") ? r.json() : r.text();
 }
@@ -663,6 +663,7 @@ async function select(id) {
   render();
 }
 async function tick() {
+  if (S.authFailed) return; // sin token válido no tiene sentido seguir pidiendo cada 3 s
   const before = JSON.stringify(S.runs);
   await refreshRuns();
   const runChanged = await refreshRun(false);
@@ -742,6 +743,7 @@ document.addEventListener("click", async e => {
 });
 
 async function boot() {
+  S.authFailed = false;
   health();
   try { S.cfg = await api("/pipeline"); if (S.cfg.n8n) $("#lnk-n8n").href = S.cfg.n8n; } catch {}
   await refreshRuns();
