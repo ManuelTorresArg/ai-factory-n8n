@@ -9,6 +9,8 @@
     POST /runs/{id}/deploy             merge local o PR.md para humano
     POST /runs/{id}/human-decision     {approve: bool, note}
     POST /runs/{id}/fail               marca el run como fallido
+    POST /runs/{id}/cancel             stopper manual {reason}: corta la etapa en curso y las siguientes
+    POST /runs/{id}/retry              vuelve a enviar la tarea de un run failed/cancelled/rejected a n8n
     POST /runs/{id}/learn              Librarian actualiza el Brain
     GET  /runs, /runs/{id}, /runs/{id}/audit, /health
 
@@ -31,6 +33,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .config import settings
+from .llm import LLMError
 from .stages import Factory
 
 app = FastAPI(title="AI Factory runner", version="0.1.0")
@@ -53,6 +56,7 @@ class Task(BaseModel):
     source: str = "manual"
     source_ref: str | None = None
     ui_url: str | None = None
+    retry_of: str | None = None
 
 
 class HumanDecision(BaseModel):
@@ -64,13 +68,40 @@ class Fail(BaseModel):
     reason: str = "sin detalle"
 
 
+class Cancel(BaseModel):
+    reason: str = ""
+
+
 def _run(fn, *args, **kw):
     try:
         return fn(*args, **kw)
     except FileNotFoundError:
         raise HTTPException(404, "run inexistente")
+    except LLMError as exc:
+        raise HTTPException(502, f"el proveedor de modelos no respondió: {exc}")
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc))
+
+
+def _stage(fn, run_id: str, *args):
+    """Ejecuta una etapa. Si falla por infraestructura (LLM caído, git, bug), el run queda en `failed`
+    con el motivo en la bitácora, aunque n8n no llegue a llamar a /fail: nunca queda colgado."""
+    try:
+        return _run(fn, run_id, *args)
+    except HTTPException as exc:
+        if exc.status_code >= 500:
+            _mark_failed(run_id, f"{fn.__name__}: {exc.detail}")
+        raise
+    except Exception as exc:
+        _mark_failed(run_id, f"{fn.__name__}: {type(exc).__name__}: {exc}")
+        raise HTTPException(500, f"{fn.__name__} falló: {type(exc).__name__}: {exc}")
+
+
+def _mark_failed(run_id: str, reason: str) -> None:
+    try:
+        factory().fail(run_id, reason[:1000])
+    except Exception:
+        pass  # el run no existe o el disco falla: el error original es el que importa
 
 
 @app.get("/health")
@@ -102,37 +133,37 @@ def audit(run_id: str):
 
 @app.post("/runs/{run_id}/spec", dependencies=[Depends(auth)])
 def spec(run_id: str):
-    return _run(factory().spec, run_id)
+    return _stage(factory().spec, run_id)
 
 
 @app.post("/runs/{run_id}/build", dependencies=[Depends(auth)])
 def build(run_id: str):
-    return _run(factory().build, run_id)
+    return _stage(factory().build, run_id)
 
 
 @app.post("/runs/{run_id}/review/{kind}", dependencies=[Depends(auth)])
 def review(run_id: str, kind: str):
-    return _run(factory().review, run_id, kind)
+    return _stage(factory().review, run_id, kind)
 
 
 @app.post("/runs/{run_id}/approve", dependencies=[Depends(auth)])
 def approve(run_id: str):
-    return _run(factory().approve, run_id)
+    return _stage(factory().approve, run_id)
 
 
 @app.post("/runs/{run_id}/gate", dependencies=[Depends(auth)])
 def gate(run_id: str):
-    return _run(factory().gate, run_id)
+    return _stage(factory().gate, run_id)
 
 
 @app.post("/runs/{run_id}/deploy", dependencies=[Depends(auth)])
 def deploy(run_id: str):
-    return _run(factory().deploy, run_id)
+    return _stage(factory().deploy, run_id)
 
 
 @app.post("/runs/{run_id}/human-decision", dependencies=[Depends(auth)])
 def human(run_id: str, body: HumanDecision):
-    return _run(factory().human_decision, run_id, body.approve, body.note)
+    return _stage(factory().human_decision, run_id, body.approve, body.note)
 
 
 @app.post("/runs/{run_id}/fail", dependencies=[Depends(auth)])
@@ -140,9 +171,14 @@ def fail(run_id: str, body: Fail | None = None):
     return _run(factory().fail, run_id, (body or Fail()).reason)
 
 
+@app.post("/runs/{run_id}/cancel", dependencies=[Depends(auth)])
+def cancel(run_id: str, body: Cancel | None = None):
+    return _run(factory().cancel, run_id, (body or Cancel()).reason)
+
+
 @app.post("/runs/{run_id}/learn", dependencies=[Depends(auth)])
 def learn(run_id: str):
-    return _run(factory().learn, run_id)
+    return _stage(factory().learn, run_id)
 
 
 # ---- UI -------------------------------------------------------------------
@@ -218,8 +254,23 @@ def prompt_file(name: str):
 @app.post("/submit", dependencies=[Depends(auth)])
 def submit(task: Task):
     """Igual que scripts/submit.sh: la tarea entra por n8n, que orquesta todas las etapas."""
+    # El intake también lo controla, pero n8n responde al webhook antes de crear el run: avisamos acá.
+    _run(factory().check_capacity)
+    return _to_n8n(task.model_dump())
+
+
+@app.post("/runs/{run_id}/retry", dependencies=[Depends(auth)])
+def retry(run_id: str):
+    """Reintento = run nuevo con la misma tarea (y `retry_of`), orquestado por n8n como cualquier otro."""
+    task = _run(factory().retry_task, run_id)
+    out = _to_n8n(task)
+    factory().store.audit(run_id, "pipeline", "retry_requested", {})
+    return out | {"retry_of": run_id}
+
+
+def _to_n8n(payload: dict) -> dict:
     try:
-        r = httpx.post(settings().n8n_webhook, json=task.model_dump(), timeout=15)
+        r = httpx.post(settings().n8n_webhook, json=payload, timeout=15)
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"n8n no responde en {settings().n8n_webhook}: {exc}")
     if r.status_code >= 400:

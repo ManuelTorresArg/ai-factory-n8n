@@ -64,6 +64,12 @@ docker compose up -d --build
 - Merge automático sólo si tu checkout está en `main` y sin cambios sin commitear; si no, pasa a humano.
 - Builder confinado a su worktree, `.git` intocable, comandos por allowlist sin shell.
 - `max_iterations` corta el loop Builder ⇄ Aprobador.
+- Un blocker de cualquier revisor (LLM o Locust) fuerza el rechazo; el Aprobador no lo puede relajar.
+- El Builder que agota `max_steps` sin llamar a `finish` ⇒ rechazo.
+- Presupuesto por run (`pipeline.budget`: `max_tokens`, `max_minutes`): al pasarlo, la etapa se corta y el run queda `failed`.
+- `max_parallel_runs` limita los runs activos; con el cupo lleno, `/submit` y `POST /runs` responden 409.
+- Cancelación manual: botón *Cancelar run* en `/ui` o `POST /runs/<id>/cancel {"reason": "..."}`. La etapa en curso se corta en su próxima llamada al modelo y no escribe su resultado.
+- Si una etapa falla (LLM caído, timeout de n8n, error), el run queda `failed` con el motivo en la bitácora; un resultado que llega tarde no pisa ese estado.
 
 ## Prueba de carga (Locust)
 

@@ -27,6 +27,10 @@ pipeline:
   base_branch: main
   branch_prefix: factory/
   max_iterations: 3          # vueltas Builder ⇄ Aprobador antes de marcar el run como failed
+  max_parallel_runs: 2       # runs activos a la vez; con el cupo lleno, /submit y /runs responden 409 (0 = sin límite)
+  budget:                    # stoppers por run: al pasarlos, la etapa se corta y el run queda failed (0 = sin límite)
+    max_tokens: 5000000      # prompt + completion de todos los roles (el Builder reenvía el historial en cada paso)
+    max_minutes: 240         # desde el intake; un run activo sin actividad por más tiempo no ocupa cupo
 
 project:
   # Se ejecuta DENTRO del worktree del run. `python -m pytest` agrega la raíz al sys.path.

@@ -60,7 +60,7 @@ aside .head input { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid v
 
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .s-done, .s-merged, .s-approved, .s-pass { background: var(--ok-soft); color: var(--ok); }
-.s-fail, .s-failed, .s-rejected_by_human, .s-reject { background: var(--fail-soft); color: var(--fail); }
+.s-fail, .s-failed, .s-rejected_by_human, .s-reject, .s-cancelled { background: var(--fail-soft); color: var(--fail); }
 .s-warn, .s-awaiting_human, .s-rejected, .s-human { background: var(--warn-soft); color: var(--warn); }
 .s-running, .s-created, .s-specified, .s-built { background: var(--run-soft); color: var(--run); }
 .s-idle, .s-skipped { background: var(--idle-soft); color: var(--muted); }
@@ -259,8 +259,8 @@ const EDGES = [
   ["approve", "gate"], ["gate", "deploy"], ["deploy", "learn"], ["deploy", "human", "dash"],
 ];
 const STATUS_TEXT = { done: "ok", fail: "falló", warn: "atención", running: "en curso", skipped: "no aplica", idle: "pendiente" };
-const RUN_STATUS = { created: "creado", specified: "especificado", built: "construido", rejected: "rechazado (reintenta)", approved: "aprobado", failed: "fallido", merged: "mergeado", awaiting_human: "espera humano", rejected_by_human: "rechazado por humano" };
-const TERMINAL = new Set(["merged", "failed", "rejected_by_human"]);
+const RUN_STATUS = { created: "creado", specified: "especificado", built: "construido", rejected: "rechazado (reintenta)", approved: "aprobado", failed: "fallido", merged: "mergeado", awaiting_human: "espera humano", rejected_by_human: "rechazado por humano", cancelled: "cancelado" };
+const TERMINAL = new Set(["merged", "failed", "rejected_by_human", "cancelled"]);
 
 // ---------------------------------------------------------------- estado
 const S = { token: load("factoryToken") || "", runs: [], sel: null, run: null, audit: [], files: [], cfg: null, tab: "summary", node: null, fileSel: null, filter: "", cache: {} };
@@ -411,11 +411,13 @@ function render() {
   const tabs = [["summary", "Resumen"], ["iters", `Iteraciones (${r.iteration})`], ["audit", `Bitácora (${S.audit.length})`], ["files", `Artefactos (${S.files.length})`]];
   m.innerHTML = `
     ${r.status === "awaiting_human" ? humanBanner(r) : ""}
+    ${["failed", "cancelled", "rejected_by_human"].includes(r.status) ? retryBanner(r) : ""}
     <div class="run-title">
       <div style="flex:1;min-width:240px">
         <h2>${esc(t.title)}</h2>
-        <div class="meta"><span class="mono">${esc(r.id)}</span><span>${esc(t.source)}${t.source_ref ? " · " + esc(t.source_ref) : ""}</span>${r.branch ? `<span class="mono">${esc(r.branch)}</span>` : ""}<span>actualizado ${esc(ago(r.updated_at))}</span></div>
+        <div class="meta"><span class="mono">${esc(r.id)}</span><span>${esc(t.source)}${t.source_ref ? " · " + esc(t.source_ref) : ""}</span>${r.branch ? `<span class="mono">${esc(r.branch)}</span>` : ""}<span>actualizado ${esc(ago(r.updated_at))}</span>${r.retry_of ? `<button class="btn" data-run="${esc(r.retry_of)}" title="Run original">reintento de ${esc(r.retry_of)}</button>` : ""}${r.usage ? `<span title="tokens usados por el run">${esc(r.usage.total_tokens.toLocaleString("es-AR"))} tokens</span>` : ""}</div>
       </div>
+      ${TERMINAL.has(r.status) ? "" : `<button class="btn danger" data-act="cancel" title="Corta la etapa en curso en su próxima llamada al modelo">Cancelar run</button>`}
       ${badge(r.status)}
     </div>
     <div class="card"><div class="card-h">Pipeline <span class="muted small">— clic en una etapa para ver el detalle</span></div>
@@ -427,6 +429,16 @@ function render() {
   bindDiagram();
   if (S.tab === "iters") loadIterFiles();
   if (S.tab === "files" && S.fileSel) showFile(S.fileSel);
+}
+
+function retryBanner(r) {
+  const ev = [...S.audit].reverse().find(e => e.stage === "pipeline" && ["failed", "cancelled"].includes(e.event));
+  const why = ev?.data?.reason || (r.status === "rejected_by_human" ? "rechazado en la revisión humana" : "");
+  const retried = S.runs.find(x => x.retry_of === r.id);
+  return `<div class="banner"><b>${r.status === "cancelled" ? "Run cancelado." : r.status === "failed" ? "Run fallido." : "Run rechazado."}</b>
+    <span class="muted small" style="flex:1">${esc(why)}</span>
+    ${retried ? `<button class="btn" data-run="${esc(retried.id)}">Ver reintento (${esc(RUN_STATUS[retried.status] || retried.status)})</button>` : ""}
+    <button class="btn primary" data-act="retry" title="Envía la misma tarea a n8n como un run nuevo">Reintentar</button></div>`;
 }
 
 function humanBanner(r) {
@@ -521,7 +533,7 @@ async function fileJson(name) {
 function eventStatus(e) {
   const ev = e.event;
   if (["pass", "approve", "merged", "auto", "written", "created", "brain_updated"].includes(ev)) return "done";
-  if (["fail", "reject", "failed"].includes(ev)) return "fail";
+  if (["fail", "reject", "failed", "cancelled", "malformed"].includes(ev)) return "fail";
   if (["human", "awaiting_human"].includes(ev)) return "warn";
   if (e.stage === "build") return e.data?.tests_passed ? "done" : "fail";
   return "idle";
@@ -731,6 +743,26 @@ document.addEventListener("click", async e => {
   }
   if (d.prompt) { const k = Object.keys(NODES).find(n => NODES[n].role === d.prompt); if (k) openNode(k); return; }
   if (d.act === "pr") { S.tab = "files"; S.fileSel = "PR.md"; render(); return; }
+  if (d.act === "retry") {
+    t.disabled = true;
+    try {
+      await api(`/runs/${S.sel}/retry`, { method: "POST" });
+      toast("Reintento enviado a n8n: aparece en la lista en unos segundos");
+      setTimeout(async () => { await refreshRuns(); render(); }, 2500);
+    } catch (er) { toast(er.message); t.disabled = false; }
+    return;
+  }
+  if (d.act === "cancel") {
+    const reason = prompt("¿Cancelar este run? La etapa en curso se corta en su próxima llamada al modelo.\nMotivo (opcional):", "");
+    if (reason === null) return;
+    t.disabled = true;
+    try {
+      await api(`/runs/${S.sel}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+      toast("Run cancelado");
+      await Promise.all([refreshRun(true), refreshRuns()]); render();
+    } catch (er) { toast(er.message); t.disabled = false; }
+    return;
+  }
   if (d.act === "approve" || d.act === "reject") {
     const approve = d.act === "approve";
     if (!confirm(approve ? "¿Aprobar y mergear la rama a la rama base?" : "¿Rechazar este run?")) return;

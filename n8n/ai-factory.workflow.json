@@ -71,7 +71,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "18bc4117-65c0-58a3-ba83-274ba76a4283",
@@ -97,7 +98,8 @@
         "options": {
           "timeout": 2700000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "ee965d09-e379-51f8-86a2-ee4e98dde323",
@@ -123,7 +125,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "f087c4c7-bdc3-5277-9dff-7b86a02572e7",
@@ -149,7 +152,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "4129711c-a4fb-5bf8-8b23-cffa7eef654f",
@@ -175,7 +179,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "cb2e0694-ce3f-5585-a8b1-d79a68df3e8b",
@@ -201,7 +206,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "792cd8ea-5c55-5e4a-878a-30cd696b1a8c",
@@ -227,7 +233,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "5f502dc2-82a5-5f9b-bf92-1f131ca2ea99",
@@ -267,7 +274,8 @@
           "timeout": 900000
         }
       },
-      "executeOnce": true
+      "executeOnce": true,
+      "onError": "continueErrorOutput"
     },
     {
       "id": "da8f4417-a778-5799-9f32-6e02e1602964",
@@ -367,6 +375,35 @@
       }
     },
     {
+      "id": "958ddd0f-2251-50e2-974f-f5edb91af374",
+      "name": "Stage Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        760
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTORY_RUNNER_URL }}/runs/{{ $('Create Run').first().json.run_id }}/fail",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Factory-Token",
+              "value": "={{ $env.FACTORY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({reason: $prevNode.name + ': ' + ($json.error?.message || $json.error?.description || JSON.stringify($json.error || $json)).slice(0, 800)}) }}"
+      }
+    },
+    {
       "id": "83185879-71fc-58f4-8835-c27de712795e",
       "name": "Deploy Gate",
       "type": "n8n-nodes-base.httpRequest",
@@ -390,7 +427,8 @@
         "options": {
           "timeout": 900000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "5adc6739-bce8-58af-acda-1564128e84fb",
@@ -416,7 +454,8 @@
         "options": {
           "timeout": 300000
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "id": "11a51214-bdb8-555f-8e6a-70a3be9da55c",
@@ -512,8 +551,8 @@
       ],
       "parameters": {
         "width": 640,
-        "height": 220,
-        "content": "## AI Factory\nPOST /webhook/ai-factory `{title, description, source, source_ref, ui_url}`\n\nSpec → Builder (TDD) → 5 revisores en paralelo (4 LLM + Locust) → Aprobador.\nRechazo + iteraciones disponibles ⇒ vuelve al Builder con el feedback.\nAprobado ⇒ Deploy Gate (reglas de path + agente) ⇒ merge local o PR.md para humano.\n\nReemplazá **Notify human** por un nodo Telegram o Microsoft Teams."
+        "height": 250,
+        "content": "## AI Factory\nPOST /webhook/ai-factory `{title, description, source, source_ref, ui_url}`\n\nSpec → Builder (TDD) → 5 revisores en paralelo (4 LLM + Locust) → Aprobador.\nRechazo + iteraciones disponibles ⇒ vuelve al Builder con el feedback.\nAprobado ⇒ Deploy Gate (reglas de path + agente) ⇒ merge local o PR.md para humano.\n\nSi una etapa falla (LLM caído, timeout, 4xx/5xx) ⇒ **Stage Error** marca el run como failed.\nReemplazá **Notify human** por un nodo Telegram o Microsoft Teams."
       }
     }
   ],
@@ -548,6 +587,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -579,6 +625,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -587,6 +640,13 @@
         [
           {
             "node": "Wait Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Error",
             "type": "main",
             "index": 0
           }
@@ -601,6 +661,13 @@
             "type": "main",
             "index": 1
           }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -611,6 +678,13 @@
             "node": "Wait Reviews",
             "type": "main",
             "index": 2
+          }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -623,6 +697,13 @@
             "type": "main",
             "index": 3
           }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -633,6 +714,13 @@
             "node": "Wait Reviews",
             "type": "main",
             "index": 4
+          }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -653,6 +741,13 @@
         [
           {
             "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Error",
             "type": "main",
             "index": 0
           }
@@ -714,6 +809,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Stage Error",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -722,6 +824,13 @@
         [
           {
             "node": "Librarian",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Error",
             "type": "main",
             "index": 0
           }

@@ -6,6 +6,7 @@ y tu checkout local queda intacto hasta el merge.
 """
 from __future__ import annotations
 
+import fcntl
 import fnmatch
 import subprocess
 from pathlib import Path
@@ -35,9 +36,14 @@ def create_worktree(repo: Path, wt: Path, branch: str, base: str) -> None:
     git(repo, "worktree", "add", "-b", branch, str(wt), base)
 
 
+# Basura de ejecución que el Builder genera al correr tests: nunca se commitea, aunque el repo destino
+# no tenga .gitignore (si no, termina mergeada en main e infla el diff y el conteo de líneas del gate).
+JUNK = (":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.py[co]", ":(exclude,glob)**/.pytest_cache/**")
+
+
 def commit_all(wt: Path, message: str) -> str | None:
-    git(wt, "add", "-A")
-    if not git(wt, "status", "--porcelain"):
+    git(wt, "add", "-A", "--", ".", *JUNK)
+    if not git(wt, "diff", "--cached", "--name-only"):  # sólo cuenta lo staged: la basura queda sin trackear
         return None
     git(wt, "commit", "-m", message)
     return git(wt, "rev-parse", "--short", "HEAD")
@@ -75,7 +81,16 @@ def match_any(path: str, patterns: list[str]) -> str | None:
 
 
 def merge_into_base(repo: Path, branch: str, base: str, message: str) -> str:
-    """Merge local --no-ff. Sólo si tu checkout está en `base` y limpio: nunca toca trabajo sin commitear."""
+    """Merge local --no-ff. Sólo si tu checkout está en `base` y limpio: nunca toca trabajo sin commitear.
+
+    Con lock de archivo: dos runs que llegan juntos a deploy se mergean de a uno."""
+    common = Path(git(repo, "rev-parse", "--git-common-dir"))
+    with open((common if common.is_absolute() else repo / common) / "ai-factory-merge.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _merge(repo, branch, base, message)
+
+
+def _merge(repo: Path, branch: str, base: str, message: str) -> str:
     current = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
     if current != base:
         raise GitError(f"el repo está en '{current}', no en '{base}'")

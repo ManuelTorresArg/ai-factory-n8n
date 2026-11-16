@@ -10,6 +10,7 @@ import json
 import os
 import re
 import time
+from contextvars import ContextVar
 
 import httpx
 
@@ -18,6 +19,15 @@ from .config import role_cfg
 
 class LLMError(RuntimeError):
     pass
+
+
+class _NoRetry(Exception):
+    """4xx que no se arregla reintentando (400, 401, 404...)."""
+
+
+# Guardia del run en curso (la pone Factory por etapa): antes de cada llamada revisa cancelación,
+# estado y presupuesto; después suma el uso de tokens al run. Así el Builder frena entre pasos.
+llm_guard: ContextVar = ContextVar("llm_guard", default=None)
 
 
 class LLM:
@@ -33,6 +43,15 @@ class LLM:
     def chat(self, role: str, messages: list[dict], tools: list[dict] | None = None) -> dict:
         """Devuelve el `message` del assistant (con content y/o tool_calls) + meta de uso."""
         rc = role_cfg(self.cfg, role)
+        guard = llm_guard.get()
+        if guard:
+            guard.before(role)
+        msg = self._chat(role, rc, messages, tools)
+        if guard:
+            guard.after(role, msg.get("_usage") or {})
+        return msg
+
+    def _chat(self, role: str, rc: dict, messages: list[dict], tools: list[dict] | None) -> dict:
         if self.mock:
             from .mock import respond
             return respond(role, messages, tools)
@@ -53,17 +72,21 @@ class LLM:
                         headers={"Authorization": f"Bearer {self.api_key}"},
                         json=body,
                     )
-                if r.status_code >= 500 or r.status_code == 429:
+                if r.status_code >= 500 or r.status_code in (408, 429):
                     raise LLMError(f"OmniRoute {r.status_code}: {r.text[:300]}")
-                r.raise_for_status()
+                if r.status_code >= 400:
+                    raise _NoRetry(f"OmniRoute {r.status_code}: {r.text[:300]}")
                 data = r.json()
                 msg = data["choices"][0]["message"]
                 msg["_usage"] = data.get("usage", {})
                 msg["_model"] = data.get("model", rc["model"])
                 return msg
+            except _NoRetry as exc:
+                raise LLMError(f"Rol {role} ({rc['model']}): {exc}") from None
             except (httpx.HTTPError, LLMError, KeyError) as exc:
                 last = exc
-                time.sleep(2 * (attempt + 1))
+                if attempt < self.retries:
+                    time.sleep(2 * (attempt + 1))
         raise LLMError(f"Rol {role} ({rc['model']}): {last}")
 
     def ask_json(self, role: str, system: str, user: str | list, check=None) -> dict:

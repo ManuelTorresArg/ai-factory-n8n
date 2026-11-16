@@ -55,10 +55,11 @@ class RunStore:
             "approval": None,
             "gate": None,
             "deploy": None,
+            "retry_of": task.get("retry_of"),  # run fallido/cancelado del que este es reintento
         }
         (self.root / run_id).mkdir(parents=True)
         self.save(run)
-        self.audit(run_id, "intake", "created", run["task"])
+        self.audit(run_id, "intake", "created", run["task"] | ({"retry_of": run["retry_of"]} if run["retry_of"] else {}))
         return run
 
     def path(self, run_id: str) -> Path:
@@ -91,7 +92,7 @@ class RunStore:
             f = d / "run.json"
             if f.exists():
                 r = json.loads(f.read_text(encoding="utf-8"))
-                out.append({k: r.get(k) for k in ("id", "status", "iteration", "branch", "created_at", "updated_at")}
+                out.append({k: r.get(k) for k in ("id", "status", "iteration", "branch", "created_at", "updated_at", "retry_of")}
                            | {"title": r["task"]["title"], "source": r["task"].get("source")})
         return out
 
@@ -109,6 +110,9 @@ class RunStore:
         """Artefactos del run (spec.md, review-*.json, PR.md, CSV de Locust...) para la UI."""
         return [{"name": f.name, "size": f.stat().st_size}
                 for f in sorted(self.path(run_id).iterdir()) if f.is_file() and not f.name.endswith(".tmp")]
+
+    def events(self, run_id: str) -> list[dict]:
+        return [json.loads(l) for l in self.read(run_id, "audit.jsonl").splitlines() if l.strip()]
 
     def audit(self, run_id: str, stage: str, event: str, data: dict | None = None) -> None:
         line = {"ts": now(), "stage": stage, "event": event, "data": data or {}}
